@@ -1,0 +1,29 @@
+{
+  "name": "movilitat",
+  "version": "1.0.0",
+  "description": "Sistema de digitalización para transporte público - PWA mobile-first",
+  "private": true,
+  "packageManager": "yarn@4.6.0",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "yarn workspaces foreach -Apt run dev",
+    "dev:backend": "yarn workspace backend dev",
+    "dev:frontend": "yarn workspace frontend dev",
+    "build": "yarn workspaces foreach -Apt run build",
+    "build:backend": "yarn workspace backend build",
+    "build:frontend": "yarn workspace frontend build",
+    "preview": "yarn workspace frontend preview",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d --build",
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "docker:logs": "docker compose -f docker/docker-compose.yml logs -f",
+    "prisma:generate": "yarn workspace backend prisma:generate",
+    "prisma:migrate": "yarn workspace backend prisma:migrate",
+    "prisma:seed": "yarn workspace backend prisma:seed",
+    "prisma:studio": "yarn workspace backend prisma:studio"
+  },
+  "author": "Edgar",
+  "license": "MIT"
+}

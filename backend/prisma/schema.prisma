@@ -1,0 +1,425 @@
+// ===========================================
+// RUTA-CHECK - Schema de Base de Datos
+// Sistema de digitalización de transporte público
+// ===========================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================
+// ENUMS
+// ===========================================
+
+enum Role {
+  SUPER_ADMIN    // Administrador del sistema (tú)
+  ADMIN_EMPRESA  // Gerente/dueño de empresa de transporte
+  CHECADOR       // Persona en punto de control
+  CHOFER         // Conductor del vehículo
+}
+
+enum TipoVehiculo {
+  AUTOBUS
+  MICROBUS
+  COMBI
+}
+
+enum EstadoVehiculo {
+  ACTIVO
+  INACTIVO
+  MANTENIMIENTO
+  BAJA
+}
+
+enum EstadoCheckIn {
+  PENDIENTE      // Check-in registrado, pago pendiente
+  PAGADO         // Pago confirmado
+  CANCELADO      // Cancelado por algún motivo
+}
+
+enum TipoPago {
+  CHECKIN        // Pago por check-in ($15/día)
+  SUSCRIPCION    // Pago mensual empresa ($500-1000/derrotero)
+  INCENTIVO      // Incentivo al checador
+}
+
+enum EstadoPago {
+  PENDIENTE
+  COMPLETADO
+  FALLIDO
+  REEMBOLSADO
+}
+
+// ===========================================
+// USUARIOS Y AUTENTICACIÓN
+// ===========================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String?   @unique
+  telefono      String    @unique
+  password      String
+  nombre        String
+  apellido      String?
+  role          Role      @default(CHOFER)
+  activo        Boolean   @default(true)
+  avatar        String?
+  
+  // Relaciones según rol
+  empresaId     String?
+  empresa       Empresa?  @relation(fields: [empresaId], references: [id])
+  
+  // Relaciones específicas
+  chofer        Chofer?
+  checador      Checador?
+  
+  // Auditoría
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLogin     DateTime?
+
+  @@index([telefono])
+  @@index([role])
+  @@map("users")
+}
+
+// ===========================================
+// EMPRESAS DE TRANSPORTE
+// ===========================================
+
+model Empresa {
+  id                String       @id @default(cuid())
+  codigo            String       @unique // E01, E02, etc.
+  nombre            String
+  nombreCorto       String?      // "Ruta 25", "Ruta 27", etc.
+  razonSocial       String?
+  rfc               String?
+  
+  // Contacto
+  direccion         String?
+  telefono          String?
+  email             String?
+  
+  // Configuración de negocio
+  precioMensualDerrotero Decimal?  @db.Decimal(10, 2) // $500-1000 por derrotero
+  activa            Boolean      @default(true)
+  
+  // Estadísticas precalculadas
+  totalVehiculos    Int          @default(0)
+  totalDerroteros   Int          @default(0)
+  
+  // Relaciones
+  usuarios          User[]
+  derroteros        Derrotero[]
+  vehiculos         Vehiculo[]
+  pagos             Pago[]
+  
+  // Auditoría
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([codigo])
+  @@map("empresas")
+}
+
+// ===========================================
+// DERROTEROS (RUTAS)
+// ===========================================
+
+model Derrotero {
+  id              String         @id @default(cuid())
+  numero          Int            // Número dentro de la empresa (1, 2, 3...)
+  nombre          String         // Descripción de la ruta
+  
+  // Empresa propietaria
+  empresaId       String
+  empresa         Empresa        @relation(fields: [empresaId], references: [id])
+  
+  // Parque vehicular asignado
+  autobuses       Int            @default(0)
+  microbuses      Int            @default(0)
+  combis          Int            @default(0)
+  totalVehiculos  Int            @default(0)
+  
+  // Puntos de control en esta ruta
+  puntosControl   PuntoControl[]
+  vehiculos       Vehiculo[]
+  
+  // Estado
+  activo          Boolean        @default(true)
+  
+  // Auditoría
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([empresaId, numero])
+  @@index([empresaId])
+  @@map("derroteros")
+}
+
+// ===========================================
+// PUNTOS DE CONTROL
+// ===========================================
+
+model PuntoControl {
+  id              String        @id @default(cuid())
+  nombre          String        // "Calacoaya", "Metro Rosario", etc.
+  descripcion     String?
+  
+  // Ubicación
+  latitud         Decimal?      @db.Decimal(10, 8)
+  longitud        Decimal?      @db.Decimal(11, 8)
+  direccion       String?
+  
+  // Derrotero al que pertenece
+  derroteroId     String
+  derrotero       Derrotero     @relation(fields: [derroteroId], references: [id])
+  
+  // Checador asignado actualmente
+  checadorId      String?
+  checador        Checador?     @relation(fields: [checadorId], references: [id])
+  
+  // Configuración
+  horaInicio      String?       // "06:00"
+  horaFin         String?       // "21:00"
+  activo          Boolean       @default(true)
+  
+  // Check-ins en este punto
+  checkIns        CheckIn[]
+  
+  // Auditoría
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([derroteroId])
+  @@index([checadorId])
+  @@map("puntos_control")
+}
+
+// ===========================================
+// VEHÍCULOS
+// ===========================================
+
+model Vehiculo {
+  id              String          @id @default(cuid())
+  placa           String          @unique
+  numeroEconomico String?         // Número interno de la empresa
+  tipo            TipoVehiculo
+  estado          EstadoVehiculo  @default(ACTIVO)
+  
+  // Empresa y derrotero
+  empresaId       String
+  empresa         Empresa         @relation(fields: [empresaId], references: [id])
+  derroteroId     String?
+  derrotero       Derrotero?      @relation(fields: [derroteroId], references: [id])
+  
+  // Chofer asignado actualmente
+  choferId        String?
+  chofer          Chofer?         @relation(fields: [choferId], references: [id])
+  
+  // Información del vehículo
+  marca           String?
+  modelo          String?
+  anio            Int?
+  capacidad       Int?            // Número de pasajeros
+  
+  // Check-ins de este vehículo
+  checkIns        CheckIn[]
+  
+  // Auditoría
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([empresaId])
+  @@index([derroteroId])
+  @@index([choferId])
+  @@map("vehiculos")
+}
+
+// ===========================================
+// CHOFER (Extensión de User)
+// ===========================================
+
+model Chofer {
+  id              String       @id @default(cuid())
+  
+  // Usuario asociado
+  userId          String       @unique
+  user            User         @relation(fields: [userId], references: [id])
+  
+  // Licencia
+  licencia        String?
+  tipoLicencia    String?      // A, B, C, D, E
+  vigenciaLicencia DateTime?
+  
+  // Vehículos que puede manejar
+  vehiculos       Vehiculo[]
+  
+  // Check-ins realizados
+  checkIns        CheckIn[]
+  
+  // Pagos realizados
+  pagos           Pago[]
+  
+  // Estadísticas
+  totalCheckIns   Int          @default(0)
+  
+  // Auditoría
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@map("choferes")
+}
+
+// ===========================================
+// CHECADOR (Extensión de User)
+// ===========================================
+
+model Checador {
+  id              String         @id @default(cuid())
+  
+  // Usuario asociado
+  userId          String         @unique
+  user            User           @relation(fields: [userId], references: [id])
+  
+  // Identificación
+  curp            String?
+  ine             String?
+  
+  // Puntos de control asignados
+  puntosControl   PuntoControl[]
+  
+  // Check-ins registrados
+  checkIns        CheckIn[]
+  
+  // Pagos recibidos (incentivos)
+  pagosRecibidos  Pago[]
+  
+  // Estadísticas
+  totalCheckIns   Int            @default(0)
+  ingresoMes      Decimal        @default(0) @db.Decimal(10, 2)
+  
+  // Auditoría
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@map("checadores")
+}
+
+// ===========================================
+// CHECK-INS (Registro de llegadas)
+// ===========================================
+
+model CheckIn {
+  id              String          @id @default(cuid())
+  
+  // Quién lo registró y quién llegó
+  checadorId      String
+  checador        Checador        @relation(fields: [checadorId], references: [id])
+  choferId        String
+  chofer          Chofer          @relation(fields: [choferId], references: [id])
+  
+  // Dónde y qué vehículo
+  puntoControlId  String
+  puntoControl    PuntoControl    @relation(fields: [puntoControlId], references: [id])
+  vehiculoId      String
+  vehiculo        Vehiculo        @relation(fields: [vehiculoId], references: [id])
+  
+  // Datos del check-in
+  fechaHora       DateTime        @default(now())
+  tiempoTranscurrido Int?         // Minutos desde el último paso
+  
+  // Ubicación GPS (del checador al momento)
+  latitud         Decimal?        @db.Decimal(10, 8)
+  longitud        Decimal?        @db.Decimal(11, 8)
+  
+  // Estado y pago
+  estado          EstadoCheckIn   @default(PENDIENTE)
+  monto           Decimal         @default(15) @db.Decimal(10, 2) // $15 MXN
+  
+  // Notas
+  notas           String?
+  
+  // Pago asociado
+  pagoId          String?
+  pago            Pago?           @relation(fields: [pagoId], references: [id])
+  
+  // Auditoría
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([checadorId])
+  @@index([choferId])
+  @@index([puntoControlId])
+  @@index([vehiculoId])
+  @@index([fechaHora])
+  @@map("check_ins")
+}
+
+// ===========================================
+// PAGOS
+// ===========================================
+
+model Pago {
+  id              String        @id @default(cuid())
+  
+  // Tipo y monto
+  tipo            TipoPago
+  monto           Decimal       @db.Decimal(10, 2)
+  estado          EstadoPago    @default(PENDIENTE)
+  
+  // Quién paga
+  empresaId       String?
+  empresa         Empresa?      @relation(fields: [empresaId], references: [id])
+  choferId        String?
+  chofer          Chofer?       @relation(fields: [choferId], references: [id])
+  
+  // Quién recibe (checador)
+  checadorId      String?
+  checador        Checador?     @relation(fields: [checadorId], references: [id])
+  
+  // Check-ins asociados (si es pago de check-in)
+  checkIns        CheckIn[]
+  
+  // Método de pago
+  metodoPago      String?       // "efectivo", "transferencia", "stripe"
+  referencia      String?       // Referencia de transacción
+  
+  // Fechas
+  fechaPago       DateTime?
+  
+  // Notas
+  notas           String?
+  
+  // Auditoría
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([empresaId])
+  @@index([choferId])
+  @@index([checadorId])
+  @@index([tipo])
+  @@index([estado])
+  @@map("pagos")
+}
+
+// ===========================================
+// CONFIGURACIÓN DEL SISTEMA
+// ===========================================
+
+model ConfiguracionSistema {
+  id              String    @id @default(cuid())
+  clave           String    @unique
+  valor           String
+  descripcion     String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("configuracion_sistema")
+}
