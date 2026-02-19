@@ -44,3 +44,4 @@ docker/logs/
 *.pem
 *.key
 .turbo/
+chat-export*.json
