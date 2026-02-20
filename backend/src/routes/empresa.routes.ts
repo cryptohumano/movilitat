@@ -271,7 +271,7 @@ router.get(
           totalVehiculos: empresa.vehiculos.length,
           vehiculosActivos: empresa.vehiculos.filter(v => v.estado === 'ACTIVO').length,
           checkInsDelMes,
-          ingresosMes: ingresosMes._sum.monto || 0,
+          ingresosMes: ingresosMes._sum.monto?.toNumber() ?? 0,
         },
       });
     } catch (error) {

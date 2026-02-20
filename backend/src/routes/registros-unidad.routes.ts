@@ -69,7 +69,7 @@ router.get(
         success: true,
         data: registros,
         resumen: {
-          ultimoKilometraje: ultimoKm?.valorNumerico ?? null,
+          ultimoKilometraje: ultimoKm?.valorNumerico != null ? Number(ultimoKm.valorNumerico) : null,
           fechaUltimoKm: ultimoKm?.fecha ?? null,
         },
         pagination: { total, limit: parseInt(limit as string), offset: parseInt(offset as string) },

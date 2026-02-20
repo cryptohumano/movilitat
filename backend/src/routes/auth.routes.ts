@@ -146,7 +146,11 @@ router.post('/login', async (req, res: Response) => {
     console.error('Error en login:', error);
     try {
       if (!res.headersSent) {
-        res.status(500).json({ success: false, message: 'Error en el servidor' });
+        const msg =
+          process.env.NODE_ENV !== 'production' && error instanceof Error
+            ? error.message
+            : 'Error en el servidor';
+        res.status(500).json({ success: false, message: msg });
       }
     } catch (e) {
       console.error('No se pudo enviar respuesta de error:', e);

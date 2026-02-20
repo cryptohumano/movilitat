@@ -6,6 +6,8 @@ import {
   Loader2,
   Check,
   Plus,
+  Bus,
+  Activity,
 } from 'lucide-react';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
@@ -24,6 +26,12 @@ interface DerroteroItem {
   empresa: { id: string; codigo: string; nombreCorto: string | null };
 }
 
+interface EstadoRuta {
+  unidadesEnRuta: number;
+  conActividadHoy: number;
+  ultimaActividadAt: string | null;
+}
+
 interface SuscripcionItem {
   id: string;
   notificaciones: boolean;
@@ -36,6 +44,7 @@ interface SuscripcionItem {
     activo: boolean;
     empresa: { nombreCorto: string; codigo: string };
   };
+  estadoRuta?: EstadoRuta;
 }
 
 function formatHorario(ini: string | null, fin: string | null): string {
@@ -43,6 +52,21 @@ function formatHorario(ini: string | null, fin: string | null): string {
   if (ini) return `Desde ${ini}`;
   if (fin) return `Hasta ${fin}`;
   return 'Sin horario definido';
+}
+
+function formatHaceCuanto(isoString: string): string {
+  const then = new Date(isoString).getTime();
+  const now = Date.now();
+  const diffMs = now - then;
+  const diffMin = Math.floor(diffMs / 60_000);
+  const diffH = Math.floor(diffMin / 60);
+  const diffD = Math.floor(diffH / 24);
+  if (diffMin < 1) return 'hace un momento';
+  if (diffMin < 60) return `hace ${diffMin} min`;
+  if (diffH < 24) return `hace ${diffH} h`;
+  if (diffD === 1) return 'ayer';
+  if (diffD < 7) return `hace ${diffD} días`;
+  return new Date(isoString).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
 }
 
 export function MisRutasPage() {
@@ -56,15 +80,23 @@ export function MisRutasPage() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [drRes, subRes] = await Promise.all([
+      const [drRes, subRes] = await Promise.allSettled([
         api.get<DerroteroItem[]>('/derroteros', { activo: 'true' }),
-        api.get<SuscripcionItem[]>('/suscripciones-ruta'),
+        api.get<SuscripcionItem[]>('/suscripciones-ruta', { incluirEstado: '1' }),
       ]);
-      if (drRes.success && drRes.data) {
-        setDerroteros(Array.isArray(drRes.data) ? drRes.data : []);
+      if (drRes.status === 'fulfilled' && drRes.value.success && drRes.value.data) {
+        setDerroteros(Array.isArray(drRes.value.data) ? drRes.value.data : []);
       }
-      if (subRes.success && subRes.data) {
-        setSuscripciones(Array.isArray(subRes.data) ? subRes.data : []);
+      if (subRes.status === 'fulfilled' && subRes.value.success && subRes.value.data) {
+        setSuscripciones(Array.isArray(subRes.value.data) ? subRes.value.data : []);
+      } else if (subRes.status === 'rejected' || (subRes.status === 'fulfilled' && !subRes.value.success)) {
+        // Fallback: cargar suscripciones sin estado por si el backend falla con incluirEstado
+        try {
+          const fallback = await api.get<SuscripcionItem[]>('/suscripciones-ruta');
+          if (fallback.success && fallback.data) setSuscripciones(Array.isArray(fallback.data) ? fallback.data : []);
+        } catch {
+          // ignore
+        }
       }
     } catch (e) {
       console.error(e);
@@ -118,7 +150,7 @@ export function MisRutasPage() {
         <div>
           <h2 className="text-2xl font-bold">Mis rutas</h2>
           <p className="text-muted-foreground text-sm">
-            Suscríbete a las rutas que usas y consulta sus horarios
+            Suscríbete a las rutas que usas, consulta horarios y estado de operación (unidades en ruta, actividad reciente).
           </p>
         </div>
 
@@ -161,6 +193,23 @@ export function MisRutasPage() {
                           <Clock className="size-3" />
                           {formatHorario(s.derrotero.horarioInicio, s.derrotero.horarioFin)}
                         </p>
+                        {s.estadoRuta && (
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <Bus className="size-3" />
+                              {s.estadoRuta.unidadesEnRuta} unidad{s.estadoRuta.unidadesEnRuta !== 1 ? 'es' : ''} en la ruta
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Activity className="size-3" />
+                              {s.estadoRuta.conActividadHoy} en operación hoy
+                            </span>
+                            {s.estadoRuta.ultimaActividadAt && (
+                              <span>
+                                Última actividad: {formatHaceCuanto(s.estadoRuta.ultimaActividadAt)}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <Button

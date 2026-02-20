@@ -6,12 +6,14 @@ import { Role } from '@prisma/client';
 const router = Router();
 
 // GET /api/suscripciones-ruta - Mis rutas suscritas (pasajero)
+// ?incluirEstado=1 añade por cada ruta: unidadesEnRuta, conActividadHoy, ultimaActividadAt (para informar al pasajero)
 router.get(
   '/',
   authenticate,
   authorize(Role.PASAJERO, Role.SUPER_ADMIN),
   async (req: AuthRequest, res: Response) => {
     try {
+      const incluirEstado = req.query.incluirEstado === '1';
       const suscripciones = await prisma.suscripcionRuta.findMany({
         where: { userId: req.user!.id },
         include: {
@@ -29,7 +31,68 @@ router.get(
         },
         orderBy: { createdAt: 'desc' },
       });
-      res.json({ success: true, data: suscripciones });
+
+      if (!incluirEstado || suscripciones.length === 0) {
+        return res.json({ success: true, data: suscripciones });
+      }
+
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      const derroteroIds = [...new Set(suscripciones.map((s) => s.derrotero.id))];
+
+      const [vehiculosPorDerrotero, checkInsHoyPorVehiculo, ultimoCheckInPorDerrotero] = await Promise.all([
+        prisma.vehiculo.groupBy({
+          by: ['derroteroId'],
+          where: { derroteroId: { in: derroteroIds }, estado: 'ACTIVO' },
+          _count: { id: true },
+        }),
+        prisma.checkIn.groupBy({
+          by: ['vehiculoId'],
+          where: {
+            vehiculo: { derroteroId: { in: derroteroIds } },
+            fechaHora: { gte: hoy },
+          },
+        }),
+        prisma.checkIn.findMany({
+          where: { vehiculo: { derroteroId: { in: derroteroIds } } },
+          orderBy: { fechaHora: 'desc' },
+          select: {
+            fechaHora: true,
+            vehiculoId: true,
+            vehiculo: { select: { derroteroId: true } },
+          },
+          take: derroteroIds.length * 5,
+        }),
+      ]);
+
+      const unidadesPorDerrotero = Object.fromEntries(
+        vehiculosPorDerrotero.map((g) => [g.derroteroId!, g._count.id])
+      );
+      const conActividadHoy = new Set(checkInsHoyPorVehiculo.map((c) => c.vehiculoId));
+      const vehiculosConActividad = await prisma.vehiculo.findMany({
+        where: { id: { in: [...conActividadHoy] } },
+        select: { id: true, derroteroId: true },
+      });
+      const conActividadPorDerrotero: Record<string, number> = {};
+      for (const v of vehiculosConActividad) {
+        if (v.derroteroId) conActividadPorDerrotero[v.derroteroId] = (conActividadPorDerrotero[v.derroteroId] || 0) + 1;
+      }
+      const ultimoPorDerrotero: Record<string, Date> = {};
+      for (const c of ultimoCheckInPorDerrotero) {
+        const derId = c.vehiculo?.derroteroId;
+        if (derId && !ultimoPorDerrotero[derId]) ultimoPorDerrotero[derId] = c.fechaHora;
+      }
+
+      const data = suscripciones.map((s) => ({
+        ...s,
+        estadoRuta: {
+          unidadesEnRuta: unidadesPorDerrotero[s.derrotero.id] ?? 0,
+          conActividadHoy: conActividadPorDerrotero[s.derrotero.id] ?? 0,
+          ultimaActividadAt: ultimoPorDerrotero[s.derrotero.id]?.toISOString() ?? null,
+        },
+      }));
+
+      res.json({ success: true, data });
     } catch (e) {
       console.error('Error listando suscripciones:', e);
       res.status(500).json({ success: false, message: 'Error al obtener suscripciones' });

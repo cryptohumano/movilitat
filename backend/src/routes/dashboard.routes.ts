@@ -102,7 +102,7 @@ async function getDashboardSuperAdmin(hoy: Date, inicioMes: Date) {
     actividad: {
       checkInsHoy,
       checkInsMes,
-      ingresosMes: ingresosMes._sum.monto || 0,
+      ingresosMes: ingresosMes._sum.monto?.toNumber() ?? 0,
     },
     topEmpresas,
   };
@@ -373,7 +373,7 @@ async function getDashboardChofer(userId: string, hoy: Date, inicioMes: Date) {
     actividad: {
       checkInsHoy,
       checkInsMes,
-      gastoMes: gastoMes._sum.monto || 0,
+      gastoMes: gastoMes._sum.monto?.toNumber() ?? 0,
     },
     ultimosCheckIns,
   };

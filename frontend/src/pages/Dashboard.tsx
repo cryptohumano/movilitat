@@ -10,7 +10,10 @@ import {
   ChevronRight,
   Building2,
   Users,
-  Route
+  Route,
+  Loader2,
+  CheckCircle,
+  CircleOff
 } from 'lucide-react';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
@@ -26,10 +29,59 @@ export function DashboardPage() {
   const user = useAuthStore((state) => state.user);
   const [data, setData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [unidadActiva, setUnidadActiva] = useState<{
+    tieneUnidadActiva: boolean;
+    unidadActiva: { id: string; placa: string; numeroEconomico?: string; tipo: string; derrotero?: { numero: number; nombre: string }; empresa?: { nombreCorto: string } } | null;
+    unidadesAsignadas: Array<{ id: string; placa: string; numeroEconomico?: string; tipo: string; derrotero?: { numero: number; nombre: string }; empresa?: { nombreCorto: string } }>;
+  } | null>(null);
+  const [unidadActivaLoading, setUnidadActivaLoading] = useState(false);
+  const [activarTerminarLoading, setActivarTerminarLoading] = useState(false);
 
   useEffect(() => {
     loadDashboard();
   }, []);
+
+  useEffect(() => {
+    if (user?.role === 'CHOFER') {
+      loadUnidadActiva();
+    }
+  }, [user?.role]);
+
+  const loadUnidadActiva = async () => {
+    setUnidadActivaLoading(true);
+    try {
+      const res = await api.get<{ data: typeof unidadActiva }>('/chofer/unidad-activa');
+      if (res.success && res.data) setUnidadActiva(res.data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setUnidadActivaLoading(false);
+    }
+  };
+
+  const handleActivarUnidad = async (vehiculoId: string) => {
+    setActivarTerminarLoading(true);
+    try {
+      const res = await api.post<{ data: { unidadActiva: unknown } }>('/chofer/activar-unidad', { vehiculoId });
+      if (res.success) await loadUnidadActiva();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setActivarTerminarLoading(false);
+    }
+  };
+
+  const handleTerminarUnidad = async () => {
+    setActivarTerminarLoading(true);
+    try {
+      await api.post('/chofer/terminar-unidad');
+      await loadUnidadActiva();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setActivarTerminarLoading(false);
+    }
+  };
 
   const loadDashboard = async () => {
     try {
@@ -156,6 +208,72 @@ export function DashboardPage() {
                   color="success"
                 />
               </>
+            )}
+
+            {/* Chofer: estado unidad activa */}
+            {user.role === 'CHOFER' && (
+              <Card className="col-span-2">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Bus className="size-4" />
+                    Unidad en operación
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Activa la unidad que estás manejando. Al terminar, libérala para que otro chofer pueda usarla.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {unidadActivaLoading ? (
+                    <div className="flex justify-center py-4">
+                      <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : unidadActiva?.tieneUnidadActiva && unidadActiva.unidadActiva ? (
+                    <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 p-3">
+                      <div className="flex items-center gap-3">
+                        <div className="size-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                          <CheckCircle className="size-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-semibold">Estás operando: {unidadActiva.unidadActiva.placa}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {unidadActiva.unidadActiva.empresa?.nombreCorto}
+                            {unidadActiva.unidadActiva.derrotero && ` • Ruta ${unidadActiva.unidadActiva.derrotero.numero}`}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={activarTerminarLoading}
+                        onClick={handleTerminarUnidad}
+                      >
+                        {activarTerminarLoading ? <Loader2 className="size-4 animate-spin" /> : <><CircleOff className="size-4 mr-1" />Terminar</>}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">Activa la unidad con la que vas a operar:</p>
+                      {unidadActiva?.unidadesAsignadas?.length ? (
+                        <div className="flex flex-wrap gap-2">
+                          {unidadActiva.unidadesAsignadas.map((v) => (
+                            <Button
+                              key={v.id}
+                              variant="outline"
+                              size="sm"
+                              disabled={activarTerminarLoading}
+                              onClick={() => handleActivarUnidad(v.id)}
+                            >
+                              {activarTerminarLoading ? <Loader2 className="size-4 animate-spin" /> : `${v.placa}`}
+                            </Button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No tienes unidades asignadas. Contacta al administrador.</p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             )}
 
             {(user.role === 'ADMIN_EMPRESA' || user.role === 'SUPER_ADMIN') && (

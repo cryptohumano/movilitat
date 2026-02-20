@@ -275,9 +275,9 @@ model Vehiculo {
   derroteroId     String?
   derrotero       Derrotero?      @relation(fields: [derroteroId], references: [id])
   
-  // Chofer asignado actualmente
+  // Chofer asignado actualmente (asignación de flota)
   choferId        String?
-  chofer          Chofer?         @relation(fields: [choferId], references: [id])
+  chofer          Chofer?         @relation("ChoferAsignado", fields: [choferId], references: [id])
   
   // Información del vehículo
   marca           String?
@@ -285,6 +285,9 @@ model Vehiculo {
   anio            Int?
   capacidad       Int?            // Número de pasajeros
   
+  // Chofer que tiene esta unidad "activada" (la está manejando ahora)
+  choferActivo    Chofer?         @relation("UnidadActiva")
+
   // Check-ins de este vehículo
   checkIns        CheckIn[]
   registrosRutaChofer RegistroRutaChofer[]
@@ -320,8 +323,12 @@ model Chofer {
   tipoLicencia    String?      // A, B, C, D, E
   vigenciaLicencia DateTime?
   
-  // Vehículos que puede manejar (pueden ser de distintas empresas/derroteros)
-  vehiculos       Vehiculo[]
+  // Vehículos asignados (pueden ser de distintas empresas/derroteros)
+  vehiculos       Vehiculo[]      @relation("ChoferAsignado")
+  
+  // Unidad actualmente "activada" (la que está manejando ahora). Al terminar, se libera para otro chofer.
+  vehiculoActivoId String?       @unique
+  vehiculoActivo   Vehiculo?     @relation("UnidadActiva", fields: [vehiculoActivoId], references: [id])
   
   // Check-ins realizados
   checkIns        CheckIn[]

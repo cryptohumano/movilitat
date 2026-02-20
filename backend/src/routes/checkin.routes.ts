@@ -474,7 +474,7 @@ router.get('/estadisticas/resumen', authenticate, async (req: AuthRequest, res: 
       data: {
         checkInsHoy,
         checkInsMes,
-        ingresosMes: ingresosMes._sum.monto || 0,
+        ingresosMes: ingresosMes._sum.monto?.toNumber() ?? 0,
         pendientesPago,
       },
     });
