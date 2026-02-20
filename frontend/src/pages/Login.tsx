@@ -11,7 +11,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const login = useAuthStore((state) => state.login);
   
-  const [telefono, setTelefono] = useState('');
+  const [telefonoOEmail, setTelefonoOEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -24,7 +24,7 @@ export function LoginPage() {
 
     try {
       const response = await api.post<LoginResponse>('/auth/login', {
-        telefono,
+        telefonoOEmail: telefonoOEmail.trim(),
         password,
       });
 
@@ -55,24 +55,24 @@ export function LoginPage() {
         <CardHeader className="text-center">
           <CardTitle>Bienvenido</CardTitle>
           <CardDescription>
-            Ingresa con tu número de teléfono
+            Ingresa con tu teléfono o correo electrónico
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Teléfono */}
+            {/* Teléfono o correo */}
             <div className="space-y-2">
               <div className="relative">
                 <Phone className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-muted-foreground" />
                 <Input
-                  type="tel"
-                  placeholder="Número de teléfono"
-                  value={telefono}
-                  onChange={(e) => setTelefono(e.target.value)}
+                  type="text"
+                  placeholder="Teléfono o correo"
+                  value={telefonoOEmail}
+                  onChange={(e) => setTelefonoOEmail(e.target.value)}
                   className="pl-12"
                   required
-                  autoComplete="tel"
-                  inputMode="numeric"
+                  autoComplete="username"
+                  inputMode="email"
                 />
               </div>
             </div>
@@ -144,6 +144,7 @@ export function LoginPage() {
       {/* Demo credentials */}
       <div className="mt-8 text-center text-sm text-muted-foreground animate-fade-in">
         <p className="font-medium mb-2">Credenciales de prueba:</p>
+        <p>Pasajero: 5550000001 / admin123</p>
         <p>Checador: 5551111111 / admin123</p>
         <p>Chofer: 5552222222 / admin123</p>
       </div>

@@ -6,7 +6,14 @@ import {
   User,
   Bus,
   Building2,
-  BarChart3
+  BarChart3,
+  Users,
+  Map,
+  MapPin,
+  Route,
+  DollarSign,
+  Activity,
+  ScrollText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore, type Role } from '@/stores/auth.store';
@@ -23,7 +30,25 @@ const navItems: NavItem[] = [
     to: '/', 
     icon: Home, 
     label: 'Inicio',
-    roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA', 'CHECADOR', 'CHOFER']
+    roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA', 'CHECADOR', 'CHOFER', 'PASAJERO']
+  },
+  { 
+    to: '/mapa-actividad', 
+    icon: Map, 
+    label: 'Mapa',
+    roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA', 'CHECADOR']
+  },
+  { 
+    to: '/estado-flotilla', 
+    icon: Activity, 
+    label: 'Flotilla',
+    roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA', 'CHECADOR']
+  },
+  { 
+    to: '/paradas-referencia', 
+    icon: MapPin, 
+    label: 'Paradas',
+    roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA']
   },
   { 
     to: '/checkin', 
@@ -32,10 +57,40 @@ const navItems: NavItem[] = [
     roles: ['CHECADOR']
   },
   { 
+    to: '/mi-qr', 
+    icon: QrCode, 
+    label: 'Mi QR',
+    roles: ['CHOFER']
+  },
+  { 
+    to: '/registros-ruta', 
+    icon: DollarSign, 
+    label: 'Ingresos',
+    roles: ['CHOFER', 'ADMIN_EMPRESA', 'SUPER_ADMIN']
+  },
+  { 
     to: '/mis-checkins', 
     icon: ClipboardList, 
     label: 'Registros',
     roles: ['CHECADOR', 'CHOFER']
+  },
+  { 
+    to: '/mis-rutas', 
+    icon: Route, 
+    label: 'Mis rutas',
+    roles: ['PASAJERO']
+  },
+  { 
+    to: '/usuarios', 
+    icon: Users, 
+    label: 'Usuarios',
+    roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA']
+  },
+  { 
+    to: '/registro-actividad', 
+    icon: ScrollText, 
+    label: 'Registro',
+    roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA']
   },
   { 
     to: '/vehiculos', 
@@ -59,7 +114,7 @@ const navItems: NavItem[] = [
     to: '/perfil', 
     icon: User, 
     label: 'Perfil',
-    roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA', 'CHECADOR', 'CHOFER']
+    roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA', 'CHECADOR', 'CHOFER', 'PASAJERO']
   },
 ];
 

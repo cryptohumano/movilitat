@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware.js';
+import { writeAudit } from '../lib/audit.js';
 import { Role } from '@prisma/client';
 
 const router = Router();
@@ -36,6 +37,8 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       if (chofer) where.choferId = chofer.id;
     } else if (req.user!.role === Role.ADMIN_EMPRESA && req.user!.empresaId) {
       where.vehiculo = { empresaId: req.user!.empresaId };
+    } else if (req.user!.role === Role.SUPER_ADMIN && empresaId) {
+      where.vehiculo = { empresaId: empresaId as string };
     }
 
     // Filtros adicionales
@@ -48,7 +51,11 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     if (desde || hasta) {
       where.fechaHora = {};
       if (desde) where.fechaHora.gte = new Date(desde as string);
-      if (hasta) where.fechaHora.lte = new Date(hasta as string);
+      if (hasta) {
+        const hastaDate = new Date(hasta as string);
+        hastaDate.setHours(23, 59, 59, 999);
+        where.fechaHora.lte = hastaDate;
+      }
     }
 
     const [checkIns, total] = await Promise.all([
@@ -71,7 +78,8 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
               id: true, 
               placa: true, 
               tipo: true,
-              empresa: { select: { nombreCorto: true } },
+              empresa: { select: { nombreCorto: true, codigo: true } },
+              derrotero: { select: { numero: true, nombre: true } },
             } 
           },
         },
@@ -107,7 +115,7 @@ router.post(
   authorize(Role.SUPER_ADMIN, Role.CHECADOR),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { vehiculoId, puntoControlId, choferId, latitud, longitud, notas } = req.body;
+      const { vehiculoId, puntoControlId, choferId, latitud, longitud, notas, lePago, estado } = req.body;
 
       // Obtener checador
       const checador = await prisma.checador.findUnique({
@@ -149,6 +157,19 @@ router.post(
         return;
       }
 
+      // Checador: el que registra, o el asignado al punto (si es SUPER_ADMIN)
+      const effectiveChecadorId = checador?.id ?? puntoControl.checadorId ?? null;
+      if (!effectiveChecadorId && req.user!.role !== Role.SUPER_ADMIN) {
+        res.status(400).json({
+          success: false,
+          message: 'El punto de control no tiene checador asignado',
+        });
+        return;
+      }
+
+      // Chofer: el del vehículo o el enviado en el body (puede ser null si la unidad no tiene chofer asignado)
+      const effectiveChoferId = choferId || vehiculo.choferId || null;
+
       // Calcular tiempo transcurrido desde el último check-in del vehículo
       const ultimoCheckIn = await prisma.checkIn.findFirst({
         where: { vehiculoId },
@@ -167,12 +188,13 @@ router.post(
         where: { clave: 'PRECIO_CHECKIN' },
       });
       const monto = configPrecio ? parseFloat(configPrecio.valor) : 15;
+      const estadoCheckIn = estado === 'PAGADO' || lePago === true ? 'PAGADO' : 'PENDIENTE';
 
       // Crear check-in
       const checkIn = await prisma.checkIn.create({
         data: {
-          checadorId: checador?.id || 'admin',
-          choferId: choferId || vehiculo.choferId || '',
+          checadorId: effectiveChecadorId,
+          choferId: effectiveChoferId,
           puntoControlId,
           vehiculoId,
           tiempoTranscurrido,
@@ -180,6 +202,7 @@ router.post(
           longitud: longitud ? parseFloat(longitud) : null,
           monto,
           notas,
+          estado: estadoCheckIn,
         },
         include: {
           checador: {
@@ -192,13 +215,31 @@ router.post(
         },
       });
 
-      // Actualizar contador del checador
-      if (checador) {
+      // Actualizar contador e ingreso del checador (si hay checador asignado)
+      if (effectiveChecadorId) {
         await prisma.checador.update({
-          where: { id: checador.id },
-          data: { totalCheckIns: { increment: 1 } },
+          where: { id: effectiveChecadorId },
+          data: {
+            totalCheckIns: { increment: 1 },
+            ...(estadoCheckIn === 'PAGADO' && { ingresoMes: { increment: monto } }),
+          },
         });
       }
+
+      await writeAudit({
+        userId: req.user!.id,
+        role: req.user!.role,
+        empresaId: req.user!.empresaId ?? undefined,
+        accion: 'CHECKIN_CREATE',
+        recurso: 'check_in',
+        recursoId: checkIn.id,
+        detalles: {
+          placa: checkIn.vehiculo.placa,
+          puntoControl: checkIn.puntoControl.nombre,
+          vehiculoId: checkIn.vehiculoId,
+        },
+        req,
+      });
 
       res.status(201).json({
         success: true,
@@ -222,7 +263,7 @@ router.post(
   authorize(Role.SUPER_ADMIN, Role.CHECADOR),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { qrData, puntoControlId, latitud, longitud } = req.body;
+      const { qrData, puntoControlId, latitud, longitud, lePago, estado } = req.body;
 
       // Parsear datos del QR (formato: PLACA|CHOFER_ID)
       const [placa, choferId] = qrData.split('|');
@@ -263,17 +304,24 @@ router.post(
         ? Math.round((Date.now() - ultimoCheckIn.fechaHora.getTime()) / 60000)
         : undefined;
 
+      const configPrecio = await prisma.configuracionSistema.findUnique({
+        where: { clave: 'PRECIO_CHECKIN' },
+      });
+      const monto = configPrecio ? parseFloat(configPrecio.valor) : 15;
+      const estadoCheckIn = estado === 'PAGADO' || lePago === true ? 'PAGADO' : 'PENDIENTE';
+
       // Crear check-in
       const checkIn = await prisma.checkIn.create({
         data: {
           checadorId: checador.id,
-          choferId: choferId || vehiculo.choferId || '',
+          choferId: choferId || vehiculo.choferId || null,
           puntoControlId,
           vehiculoId: vehiculo.id,
           tiempoTranscurrido,
           latitud: latitud ? parseFloat(latitud) : null,
           longitud: longitud ? parseFloat(longitud) : null,
-          monto: 15,
+          monto,
+          estado: estadoCheckIn,
         },
         include: {
           vehiculo: { select: { placa: true, tipo: true } },
@@ -281,10 +329,28 @@ router.post(
         },
       });
 
-      // Actualizar contador
+      // Actualizar contador e ingreso del checador
       await prisma.checador.update({
         where: { id: checador.id },
-        data: { totalCheckIns: { increment: 1 } },
+        data: {
+          totalCheckIns: { increment: 1 },
+          ...(estadoCheckIn === 'PAGADO' && { ingresoMes: { increment: monto } }),
+        },
+      });
+
+      await writeAudit({
+        userId: req.user!.id,
+        role: req.user!.role,
+        empresaId: req.user!.empresaId ?? undefined,
+        accion: 'CHECKIN_CREATE',
+        recurso: 'check_in',
+        recursoId: checkIn.id,
+        detalles: {
+          placa: vehiculo.placa,
+          puntoControl: checkIn.puntoControl.nombre,
+          vehiculoId: checkIn.vehiculoId,
+        },
+        req,
       });
 
       res.status(201).json({
@@ -346,7 +412,7 @@ router.put(
       await prisma.checador.update({
         where: { id: checkIn.checadorId },
         data: {
-          ingresoMes: { increment: checkIn.monto.toNumber() * 0.5 }, // 50% comisión
+          ingresoMes: { increment: checkIn.monto.toNumber() }, // Monto cobrado en mano ($15 por ruta)
         },
       });
 

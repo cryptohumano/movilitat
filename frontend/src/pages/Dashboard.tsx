@@ -98,22 +98,34 @@ export function DashboardPage() {
                 />
                 <StatCard
                   icon={DollarSign}
-                  label="Ingreso del mes"
-                  value={formatCurrency(data?.actividad?.ingresoNeto || 0)}
+                  label="Total estimado este mes"
+                  value={formatCurrency(data?.actividad?.totalEstimadoMes ?? data?.actividad?.cobradoMes ?? 0)}
                   color="success"
                 />
                 <StatCard
                   icon={Clock}
-                  label="Pendientes"
+                  label="Pendientes de marcar"
                   value={data?.actividad?.pendientesPago || 0}
                   color="warning"
                 />
                 <StatCard
                   icon={TrendingUp}
-                  label="Este mes"
-                  value={data?.actividad?.checkInsMes || 0}
+                  label="Confirmados (pagado)"
+                  value={formatCurrency(data?.actividad?.cobradoMes ?? 0)}
                   color="secondary"
                 />
+              </>
+            )}
+
+            {user.role === 'PASAJERO' && (
+              <>
+                <Card className="col-span-2 py-4">
+                  <CardContent className="p-4 pt-0">
+                    <p className="text-muted-foreground text-sm">
+                      Consulta las rutas a las que estás suscrito y sus horarios en Mis rutas.
+                    </p>
+                  </CardContent>
+                </Card>
               </>
             )}
 
@@ -161,17 +173,27 @@ export function DashboardPage() {
                   color="success"
                 />
                 <StatCard
-                  icon={Bus}
-                  label="Vehículos"
-                  value={(data?.empresa as any)?.totalVehiculos || data?.resumen?.totalVehiculos || 0}
-                  color="secondary"
-                />
-                <StatCard
-                  icon={Route}
-                  label="Derroteros"
-                  value={(data?.empresa as any)?.totalDerroteros || data?.resumen?.totalDerroteros || 0}
+                  icon={Clock}
+                  label="Pendientes de pago"
+                  value={data?.actividad?.pendientesPago ?? 0}
                   color="warning"
                 />
+                <StatCard
+                  icon={Bus}
+                  label="Vehículos activos"
+                  value={(data?.empresa as any)?.vehiculosActivos ?? (data?.empresa as any)?.totalVehiculos ?? 0}
+                  color="secondary"
+                />
+                {user.role === 'SUPER_ADMIN' && (
+                  <>
+                    <StatCard
+                      icon={Route}
+                      label="Derroteros"
+                      value={(data?.empresa as any)?.totalDerroteros ?? data?.resumen?.totalDerroteros ?? 0}
+                      color="warning"
+                    />
+                  </>
+                )}
               </>
             )}
 
@@ -192,6 +214,43 @@ export function DashboardPage() {
               </>
             )}
           </div>
+        )}
+
+        {/* Gerente: resumen por derrotero */}
+        {user.role === 'ADMIN_EMPRESA' && (data as any)?.resumenDerroteros?.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Métricas por derrotero</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {((data as any).resumenDerroteros as Array<{ nombre: string; checkInsMes: number; ingresosMes: number }>).map((d: any) => (
+                <div key={d.id} className="flex justify-between items-center py-2 border-b border-border last:border-0">
+                  <div>
+                    <p className="font-medium text-sm">{d.nombre}</p>
+                    <p className="text-xs text-muted-foreground">{d.checkInsMes} check-ins este mes</p>
+                  </div>
+                  <p className="font-semibold text-success">{formatCurrency(d.ingresosMes || 0)}</p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Gerente: top unidades */}
+        {user.role === 'ADMIN_EMPRESA' && (data as any)?.topUnidades?.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Unidades con más check-ins (este mes)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {((data as any).topUnidades as Array<{ placa: string; tipo: string; checkInsMes: number }>).map((u: any, i: number) => (
+                <div key={i} className="flex justify-between items-center py-2 border-b border-border last:border-0">
+                  <p className="font-mono font-medium">{u.placa}</p>
+                  <span className="text-sm text-muted-foreground">{u.checkInsMes} registros</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         )}
 
         {/* Recent Check-ins */}
@@ -221,19 +280,20 @@ export function DashboardPage() {
                       <Bus className="size-5 text-primary" />
                     </div>
                     <div>
-                      <p className="font-medium">{checkin.vehiculo.placa}</p>
+                      <p className="font-medium">{checkin.vehiculo?.placa ?? '—'}</p>
                       <p className="text-sm text-muted-foreground">
                         {checkin.puntoControl?.nombre || 'Punto'}
-                        {checkin.tiempoTranscurrido && ` • ${checkin.tiempoTranscurrido} min`}
+                        {(checkin as any).chofer?.user?.nombre && ` • ${(checkin as any).chofer.user.nombre}`}
+                        {checkin.tiempoTranscurrido != null && ` • ${checkin.tiempoTranscurrido} min`}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <Badge variant={checkin.estado === 'PAGADO' ? 'pagado' : 'pendiente'}>
-                      {checkin.estado === 'PAGADO' ? 'Pagado' : 'Pendiente'}
+                    <Badge variant={(checkin.estado ?? '') === 'PAGADO' ? 'pagado' : 'pendiente'}>
+                      {(checkin.estado ?? '') === 'PAGADO' ? 'Pagado' : 'Pendiente'}
                     </Badge>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {formatRelativeTime(checkin.fechaHora)}
+                      {checkin.fechaHora ? formatRelativeTime(checkin.fechaHora) : '—'}
                     </p>
                   </div>
                 </div>
@@ -282,6 +342,7 @@ function getRoleLabel(role: string): string {
     ADMIN_EMPRESA: 'Gerente',
     CHECADOR: 'Checador',
     CHOFER: 'Chofer',
+    PASAJERO: 'Pasajero',
   };
   return labels[role] || role;
 }

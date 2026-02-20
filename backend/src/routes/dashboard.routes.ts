@@ -31,6 +31,9 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       case Role.CHOFER:
         dashboardData = await getDashboardChofer(user.id, hoy, inicioMes);
         break;
+      case Role.PASAJERO:
+        dashboardData = { tipo: 'PASAJERO' };
+        break;
     }
 
     res.json({
@@ -109,12 +112,18 @@ async function getDashboardEmpresa(empresaId: string, hoy: Date, inicioMes: Date
   const empresa = await prisma.empresa.findUnique({
     where: { id: empresaId },
     include: {
-      derroteros: { select: { id: true } },
+      derroteros: { select: { id: true, numero: true, nombre: true } },
       _count: { select: { vehiculos: true, usuarios: true } },
     },
   });
 
-  const [checkInsHoy, checkInsMes, ingresosMes, vehiculosActivos] = await Promise.all([
+  const [
+    checkInsHoy,
+    checkInsMes,
+    ingresosMes,
+    vehiculosActivos,
+    pendientesPago,
+  ] = await Promise.all([
     prisma.checkIn.count({
       where: {
         vehiculo: { empresaId },
@@ -138,7 +147,65 @@ async function getDashboardEmpresa(empresaId: string, hoy: Date, inicioMes: Date
     prisma.vehiculo.count({
       where: { empresaId, estado: 'ACTIVO' },
     }),
+    prisma.checkIn.count({
+      where: {
+        vehiculo: { empresaId },
+        estado: 'PENDIENTE',
+      },
+    }),
   ]);
+
+  // Resumen por derrotero (check-ins e ingresos del mes)
+  const derroterosConMetricas = await Promise.all(
+    (empresa?.derroteros || []).map(async (d) => {
+      const [ci, ing] = await Promise.all([
+        prisma.checkIn.count({
+          where: {
+            vehiculo: { empresaId, derroteroId: d.id },
+            fechaHora: { gte: inicioMes },
+          },
+        }),
+        prisma.checkIn.aggregate({
+          where: {
+            vehiculo: { empresaId, derroteroId: d.id },
+            fechaHora: { gte: inicioMes },
+            estado: 'PAGADO',
+          },
+          _sum: { monto: true },
+        }),
+      ]);
+      return {
+        id: d.id,
+        numero: d.numero,
+        nombre: d.nombre,
+        checkInsMes: ci,
+        ingresosMes: ing._sum.monto?.toNumber() || 0,
+      };
+    })
+  );
+
+  // Top unidades por check-ins del mes
+  const topUnidades = await prisma.checkIn.groupBy({
+    by: ['vehiculoId'],
+    where: {
+      vehiculo: { empresaId },
+      fechaHora: { gte: inicioMes },
+    },
+    _count: { id: true },
+    orderBy: { _count: { id: 'desc' } },
+    take: 10,
+  });
+  const vehiculoIds = topUnidades.map((u) => u.vehiculoId);
+  const vehiculosTop = await prisma.vehiculo.findMany({
+    where: { id: { in: vehiculoIds } },
+    select: { id: true, placa: true, tipo: true },
+  });
+  const mapaPlaca = Object.fromEntries(vehiculosTop.map((v) => [v.id, v]));
+  const topUnidadesConPlaca = topUnidades.map((u) => ({
+    placa: mapaPlaca[u.vehiculoId]?.placa,
+    tipo: mapaPlaca[u.vehiculoId]?.tipo,
+    checkInsMes: u._count.id,
+  }));
 
   // Últimos check-ins
   const ultimosCheckIns = await prisma.checkIn.findMany({
@@ -148,6 +215,9 @@ async function getDashboardEmpresa(empresaId: string, hoy: Date, inicioMes: Date
     include: {
       vehiculo: { select: { placa: true, tipo: true } },
       puntoControl: { select: { nombre: true } },
+      chofer: {
+        include: { user: { select: { nombre: true } } },
+      },
     },
   });
 
@@ -163,8 +233,11 @@ async function getDashboardEmpresa(empresaId: string, hoy: Date, inicioMes: Date
     actividad: {
       checkInsHoy,
       checkInsMes,
-      ingresosMes: ingresosMes._sum.monto || 0,
+      ingresosMes: ingresosMes._sum.monto?.toNumber() || 0,
+      pendientesPago,
     },
+    resumenDerroteros: derroterosConMetricas,
+    topUnidades: topUnidadesConPlaca,
     ultimosCheckIns,
   };
 }
@@ -185,7 +258,7 @@ async function getDashboardChecador(userId: string, hoy: Date, inicioMes: Date) 
     return { tipo: 'CHECADOR', error: 'No tienes perfil de checador' };
   }
 
-  const [checkInsHoy, checkInsMes, ingresosMes, pendientesPago] = await Promise.all([
+  const [checkInsHoy, checkInsMes, ingresosMes, aggregateTotalMes, pendientesPago] = await Promise.all([
     prisma.checkIn.count({
       where: { checadorId: checador.id, fechaHora: { gte: hoy } },
     }),
@@ -197,6 +270,13 @@ async function getDashboardChecador(userId: string, hoy: Date, inicioMes: Date) 
         checadorId: checador.id,
         fechaHora: { gte: inicioMes },
         estado: 'PAGADO',
+      },
+      _sum: { monto: true },
+    }),
+    prisma.checkIn.aggregate({
+      where: {
+        checadorId: checador.id,
+        fechaHora: { gte: inicioMes },
       },
       _sum: { monto: true },
     }),
@@ -218,8 +298,8 @@ async function getDashboardChecador(userId: string, hoy: Date, inicioMes: Date) 
     },
   });
 
-  const comision = 0.5; // 50%
-  const ingresoNeto = (ingresosMes._sum.monto?.toNumber() || 0) * comision;
+  const cobradoMes = ingresosMes._sum.monto?.toNumber() || 0;
+  const totalEstimadoMes = aggregateTotalMes._sum.monto?.toNumber() || 0;
 
   return {
     tipo: 'CHECADOR',
@@ -232,7 +312,8 @@ async function getDashboardChecador(userId: string, hoy: Date, inicioMes: Date) 
       checkInsHoy,
       checkInsMes,
       pendientesPago,
-      ingresoNeto,
+      cobradoMes,
+      totalEstimadoMes,
     },
     ultimosCheckIns,
   };

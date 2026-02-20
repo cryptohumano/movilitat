@@ -8,7 +8,7 @@ const router = Router();
 // GET /api/vehiculos - Listar vehículos
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { empresaId, derroteroId, tipo, estado, search, limit = '50', offset = '0' } = req.query;
+    const { empresaId, derroteroId, tipo, estado, search, limit = '50', offset = '0', incluirUltimoCheckIn = '' } = req.query;
 
     const where: any = {};
 
@@ -49,9 +49,46 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       prisma.vehiculo.count({ where }),
     ]);
 
+    let data = vehiculos as any[];
+
+    if (incluirUltimoCheckIn === '1' && vehiculos.length > 0) {
+      const ids = vehiculos.map((v) => v.id);
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      const checkInsRecientes = await prisma.checkIn.findMany({
+        where: { vehiculoId: { in: ids } },
+        orderBy: { fechaHora: 'desc' },
+        take: ids.length * 5,
+        select: {
+          vehiculoId: true,
+          fechaHora: true,
+          puntoControlId: true,
+          puntoControl: { select: { nombre: true } },
+        },
+      });
+      const ultimoPorVehiculo = new Map<string, { fechaHora: Date; puntoControl?: { nombre: string } }>();
+      for (const c of checkInsRecientes) {
+        if (!ultimoPorVehiculo.has(c.vehiculoId)) {
+          ultimoPorVehiculo.set(c.vehiculoId, {
+            fechaHora: c.fechaHora,
+            puntoControl: c.puntoControl ?? undefined,
+          });
+        }
+      }
+      const conActividadHoy = new Set<string>();
+      for (const c of checkInsRecientes) {
+        if (c.fechaHora >= hoy) conActividadHoy.add(c.vehiculoId);
+      }
+      data = vehiculos.map((v) => ({
+        ...v,
+        ultimoCheckIn: ultimoPorVehiculo.get(v.id) ?? null,
+        conActividadHoy: conActividadHoy.has(v.id),
+      }));
+    }
+
     res.json({
       success: true,
-      data: vehiculos,
+      data,
       pagination: {
         total,
         limit: parseInt(limit as string),
@@ -278,6 +315,11 @@ router.put(
         include: {
           empresa: { select: { id: true, codigo: true, nombreCorto: true } },
           derrotero: { select: { id: true, numero: true, nombre: true } },
+          chofer: {
+            include: {
+              user: { select: { id: true, nombre: true, telefono: true } },
+            },
+          },
         },
       });
 

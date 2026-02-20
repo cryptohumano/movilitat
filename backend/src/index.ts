@@ -11,6 +11,12 @@ import vehiculoRoutes from './routes/vehiculo.routes.js';
 import checkinRoutes from './routes/checkin.routes.js';
 import userRoutes from './routes/user.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
+import registrosRutaRoutes from './routes/registros-ruta.routes.js';
+import suscripcionesRutaRoutes from './routes/suscripciones-ruta.routes.js';
+import analyticsRoutes from './routes/analytics.routes.js';
+import paradasReferenciaRoutes from './routes/paradas-referencia.routes.js';
+import flotillasRoutes from './routes/flotillas.routes.js';
+import auditLogsRoutes from './routes/audit-logs.routes.js';
 
 dotenv.config();
 
@@ -29,13 +35,15 @@ app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health check
+// Health check (timestamp en UTC; para verificar hora del servidor)
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
+  const now = new Date();
+  res.json({
+    status: 'ok',
+    timestamp: now.toISOString(),
+    serverTimeZone: process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
     service: 'RutaCheck API',
-    version: '1.0.0'
+    version: '1.0.0',
   });
 });
 
@@ -47,6 +55,13 @@ app.use('/api/vehiculos', vehiculoRoutes);
 app.use('/api/checkins', checkinRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/registros-ruta', registrosRutaRoutes);
+app.use('/api/registros-unidad', registrosUnidadRoutes);
+app.use('/api/suscripciones-ruta', suscripcionesRutaRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/paradas-referencia', paradasReferenciaRoutes);
+app.use('/api/flotillas', flotillasRoutes);
+app.use('/api/audit-logs', auditLogsRoutes);
 
 // Error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

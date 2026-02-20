@@ -4,6 +4,16 @@ import { LoginPage } from '@/pages/Login';
 import { DashboardPage } from '@/pages/Dashboard';
 import { CheckInPage } from '@/pages/CheckIn';
 import { ProfilePage } from '@/pages/Profile';
+import { MisCheckInsPage } from '@/pages/MisCheckIns';
+import { MiQrPage } from '@/pages/MiQr';
+import { UsuariosPage } from '@/pages/Usuarios';
+import { VehiculosPage } from '@/pages/Vehiculos';
+import { RegistrosRutaPage } from '@/pages/RegistrosRuta';
+import { MisRutasPage } from '@/pages/MisRutas';
+import { MapaActividadPage } from '@/pages/MapaActividad';
+import { ParadasReferenciaPage } from '@/pages/ParadasReferencia';
+import { EstadoFlotillaPage } from '@/pages/EstadoFlotilla';
+import { RegistroActividadPage } from '@/pages/RegistroActividad';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -25,7 +35,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function App() {
+export default function App() {
   return (
     <BrowserRouter>
       <Routes>
@@ -66,13 +76,21 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/mi-qr"
+          element={
+            <ProtectedRoute>
+              <MiQrPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Placeholder routes */}
         <Route
           path="/mis-checkins"
           element={
             <ProtectedRoute>
-              <PlaceholderPage title="Mis Registros" />
+              <MisCheckInsPage />
             </ProtectedRoute>
           }
         />
@@ -81,11 +99,67 @@ function App() {
           path="/vehiculos"
           element={
             <ProtectedRoute>
-              <PlaceholderPage title="Vehículos" />
+              <VehiculosPage />
             </ProtectedRoute>
           }
         />
         
+        <Route
+          path="/usuarios"
+          element={
+            <ProtectedRoute>
+              <UsuariosPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/registros-ruta"
+          element={
+            <ProtectedRoute>
+              <RegistrosRutaPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mis-rutas"
+          element={
+            <ProtectedRoute>
+              <MisRutasPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mapa-actividad"
+          element={
+            <ProtectedRoute>
+              <MapaActividadPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/paradas-referencia"
+          element={
+            <ProtectedRoute>
+              <ParadasReferenciaPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/estado-flotilla"
+          element={
+            <ProtectedRoute>
+              <EstadoFlotillaPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/registro-actividad"
+          element={
+            <ProtectedRoute>
+              <RegistroActividadPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/empresas"
           element={
@@ -122,5 +196,3 @@ function PlaceholderPage({ title }: { title: string }) {
     </div>
   );
 }
-
-export default App;

@@ -36,6 +36,7 @@ export function ProfilePage() {
       ADMIN_EMPRESA: 'Gerente',
       CHECADOR: 'Checador',
       CHOFER: 'Chofer',
+      PASAJERO: 'Pasajero',
     };
     return labels[role] || role;
   };
@@ -46,6 +47,7 @@ export function ProfilePage() {
       ADMIN_EMPRESA: 'success',
       CHECADOR: 'warning',
       CHOFER: 'secondary',
+      PASAJERO: 'secondary',
     };
     return variants[role] || 'default';
   };

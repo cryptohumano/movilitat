@@ -4,12 +4,13 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware.js';
+import { writeAudit } from '../lib/audit.js';
 
 const router = Router();
 
 // Schemas de validación
 const loginSchema = z.object({
-  telefono: z.string().min(10, 'Teléfono debe tener al menos 10 dígitos'),
+  telefonoOEmail: z.string().min(1, 'Ingresa teléfono o correo'),
   password: z.string().min(6, 'Contraseña debe tener al menos 6 caracteres'),
 });
 
@@ -21,13 +22,29 @@ const registerSchema = z.object({
   email: z.string().email().optional(),
 });
 
-// POST /api/auth/login
+// POST /api/auth/login (acepta teléfono o correo electrónico)
 router.post('/login', async (req, res: Response) => {
+  const sendError = (status: number, message: string) => {
+    try {
+      res.status(status).json({ success: false, message });
+    } catch {
+      res.status(status).end(JSON.stringify({ success: false, message }));
+    }
+  };
   try {
-    const { telefono, password } = loginSchema.parse(req.body);
+    if (!process.env.JWT_SECRET) {
+      console.error('JWT_SECRET no está definido en .env');
+      sendError(500, 'Error de configuración del servidor');
+      return;
+    }
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const { telefonoOEmail, password } = loginSchema.parse(body);
+    const identificador = String(telefonoOEmail).trim();
 
-    const user = await prisma.user.findUnique({
-      where: { telefono },
+    const user = await prisma.user.findFirst({
+      where: identificador.includes('@')
+        ? { email: identificador }
+        : { telefono: identificador },
       include: {
         empresa: {
           select: { id: true, nombre: true, nombreCorto: true },
@@ -38,6 +55,12 @@ router.post('/login', async (req, res: Response) => {
     });
 
     if (!user) {
+      await writeAudit({
+        accion: 'LOGIN_FAIL',
+        recurso: 'auth',
+        detalles: { reason: 'user_not_found' },
+        req,
+      });
       res.status(401).json({
         success: false,
         message: 'Credenciales incorrectas',
@@ -47,6 +70,12 @@ router.post('/login', async (req, res: Response) => {
 
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
+      await writeAudit({
+        accion: 'LOGIN_FAIL',
+        recurso: 'auth',
+        detalles: { reason: 'wrong_password', userId: user.id },
+        req,
+      });
       res.status(401).json({
         success: false,
         message: 'Credenciales incorrectas',
@@ -55,6 +84,12 @@ router.post('/login', async (req, res: Response) => {
     }
 
     if (!user.activo) {
+      await writeAudit({
+        accion: 'LOGIN_FAIL',
+        recurso: 'auth',
+        detalles: { reason: 'user_inactive', userId: user.id },
+        req,
+      });
       res.status(403).json({
         success: false,
         message: 'Usuario desactivado. Contacte al administrador.',
@@ -75,6 +110,17 @@ router.post('/login', async (req, res: Response) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
+    await writeAudit({
+      userId: user.id,
+      userEmail: user.email ?? undefined,
+      userNombre: user.nombre,
+      role: user.role,
+      empresaId: user.empresaId ?? undefined,
+      accion: 'LOGIN',
+      recurso: 'auth',
+      req,
+    });
+
     res.json({
       success: true,
       data: {
@@ -94,18 +140,17 @@ router.post('/login', async (req, res: Response) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Datos inválidos',
-        errors: error.errors,
-      });
+      sendError(400, 'Datos inválidos');
       return;
     }
     console.error('Error en login:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error en el servidor',
-    });
+    try {
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, message: 'Error en el servidor' });
+      }
+    } catch (e) {
+      console.error('No se pudo enviar respuesta de error:', e);
+    }
   }
 });
 

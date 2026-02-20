@@ -98,12 +98,16 @@ yarn dev
 
 ## 🔐 Credenciales de Prueba
 
-| Rol | Teléfono | Contraseña |
-|-----|----------|------------|
-| Super Admin | 5551234567 | admin123 |
-| Admin Empresa | 5559876543 | admin123 |
-| Checador | 5551111111 | admin123 |
-| Chofer | 5552222222 | admin123 |
+| Rol | Usuario / Teléfono | Contraseña |
+|-----|--------------------|------------|
+| Super Admin | admin@rutacheck.mx / 5551234567 | admin123 |
+| Gerente (Admin Empresa) | admin@ruta25.mx / 5559876543 | admin123 |
+| Checador (Juan) | 5551111111 | admin123 |
+| Chofer Pedro | 5552222222 | admin123 |
+| Chofer Juan | 5553333333 | admin123 |
+| Chofer Edgar | 5554444444 | admin123 |
+
+Tras `yarn prisma:seed` hay **145 check-ins de ejemplo** en la ruta E01 (checador Juan, choferes Juan/Edgar/Pedro) para probar métricas e ingresos.
 
 ## 📁 Estructura del Proyecto
 
@@ -135,7 +139,7 @@ movilitat/
 - ✅ Funciona offline
 - ✅ Push notifications (próximamente)
 - ✅ Geolocalización
-- ✅ Cámara QR (próximamente)
+- ✅ Cámara QR (escanear en check-in)
 - ✅ Mobile-first design
 - ✅ Safe area support (notch/home indicator)
 
@@ -164,21 +168,84 @@ Usuario
 4. Chofer paga $15 MXN
 5. Checador recibe 50% comisión
 
+## 🚌 Placas y QR
+
+### Formato de placas
+
+En el seed de prueba las placas siguen el patrón:
+
+- **`{empresa}-{derrotero}-{número}`**  
+  Ejemplos: `01-1-001`, `01-1-002`, `01-2-001` (empresa E01, derrotero 1 o 2, número interno).
+- Las placas reales pueden ser las oficiales (ej. CDMX); el sistema acepta cualquier texto único por vehículo.
+- Para ver todas las placas: **Prisma Studio** (`yarn prisma:studio`) → modelo `vehiculos`, o API `GET /api/vehiculos`.
+
+### ¿Quién lleva el QR?
+
+**El chofer lleva el QR**, no el camión.
+
+- Así se identifica **qué chofer** va en la unidad y se pueden **turnar unidades**: el mismo chofer puede cambiar de camión en el día.
+- El chofer entra a **Mi QR** (app), elige **el vehículo que está manejando en ese momento** y muestra el código (en el celular o impreso).
+- Al escanear, el checador registra **vehículo + chofer** en un solo paso.
+
+### Formato del QR
+
+- Contenido: **`PLACA|CHOFER_ID`** (ej. `01-1-001|clxxx...`).
+- El checador escanea con la app (Check-in → Escanear QR) o puede registrar por placa manualmente.
+- Para **turnar**: el chofer en Mi QR selecciona otro vehículo asignado; el QR pasa a tener la nueva placa con el mismo chofer.
+
+### Resumen
+
+| Dónde | Qué |
+|------|-----|
+| **Placas** | Una por vehículo en BD; formato libre (seed: `01-1-001`, etc.). |
+| **QR** | Lo lleva el **chofer**; contenido `PLACA\|CHOFER_ID`. |
+| **Generar QR** | App → **Mi QR** (rol Chofer) → elegir unidad actual. |
+| **Turnos** | Cambiar de unidad en Mi QR = nuevo QR con otra placa, mismo chofer. |
+
 ## 📈 Modelo de Negocio
 
-### B2C (Chofer paga)
-- Chofer: $15/día por check-in
-- Checador: $7.50 comisión (50%)
-- Plataforma: $7.50 (50%)
+### SaaS: quién paga a quién
+- **Se le cobra al admin de la empresa** (gerente / Admin Empresa): la plataforma factura a la empresa; el gerente es el responsable de esa cuenta.
+- Super Admin (plataforma) crea empresas y al primer gerente; ese gerente puede crear **otros gerentes** de la misma empresa y gestionar choferes, checadores, vehículos y derroteros de su empresa.
 
-### B2B (Empresa paga)
-- Empresa: $500-1,000/mes por derrotero
-- Checador: incentivo adicional
-- Mayor margen (~70%)
+### Jerarquía y multi-empresa
+- **Gerentes (Admin Empresa)**  
+  Pertenecen a **una** empresa. Solo pueden gestionar usuarios y recursos de esa empresa. Pueden ser varios por empresa (el “admin de la empresa” los maneja: Super Admin o otro gerente de la misma empresa).
+
+- **Choferes y checadores**  
+  Pueden trabajar en **diferentes empresas** y derroteros. Su ámbito no es un solo `empresaId`, sino:
+  - **Chofer**: los vehículos que tiene asignados (cada vehículo es de una empresa/derrotero).
+  - **Checador**: los puntos de control que tiene asignados (cada punto es de un derrotero/empresa).  
+  Así, un mismo chofer o checador puede operar en varias rutas/empresas según sus asignaciones.
+
+### De dónde sale la comisión del checador (modelo solo suscripción)
+
+En operación **no se maneja efectivo en el flujo**: el ingreso real viene de la **suscripción** que paga la empresa a la plataforma. La “comisión” del checador es un **cálculo de referencia**:
+
+1. **Origen del dinero**  
+   La empresa paga a la plataforma (suscripción por derrotero/mes). De ese ingreso (o de un fondo de incentivos acordado con la empresa), se define cuánto corresponde al checador.
+
+2. **Cómo se calcula en el sistema**  
+   Cada check-in tiene un **monto de referencia** (ej. $15 MXN). El dashboard del checador muestra “Ganas este mes (50% comisión)” como:  
+   **suma de (monto de referencia × 50%)** de los check-ins pagados que registró ese mes.  
+   Ese número es la **base de cálculo** para pagarle al checador, no un cobro al chofer en el punto.
+
+3. **Quién paga al checador**  
+   - **Opción A:** La plataforma paga al checador (con lo que le paga la empresa por suscripción) usando ese cálculo.  
+   - **Opción B:** La empresa paga al checador; la plataforma entrega reportes (check-ins, monto de referencia, 50%) y la empresa liquida por su cuenta.
+
+En ambos casos: **no hay intercambio de efectivo en la operación**; el flujo es **Empresa → Suscripción → Plataforma** y de ahí (o vía empresa) **Incentivo al checador** según check-ins.
+
+### Cobro en el punto (check-in)
+- **Monto fijo:** $15 MXN por paso de ruta. El chofer **paga en mano** al checador; el checador confirma en la app que le pagó esa ruta (QR/registro = cobrado).
+- El **50% no aplica** sobre esos $15; solo tendría sentido como **referido** (si checador/gerente embarca a otra empresa con código de referido, ahí puede haber un % o bono).
+
+### B2B (suscripción)
+- Empresa: $500-1,000/mes por derrotero → paga a la plataforma. En el punto: $15 chofer → checador en mano; la app registra y confirma el pago.
 
 ## 🔜 Roadmap
 
-- [ ] Escaneo de QR con cámara
+- [x] Escaneo de QR con cámara
 - [ ] Push notifications
 - [ ] Modo offline completo
 - [ ] Reportes avanzados

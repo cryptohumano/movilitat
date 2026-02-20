@@ -49,6 +49,7 @@ router.get(
             activo: true,
             avatar: true,
             empresa: { select: { id: true, nombreCorto: true } },
+            chofer: { select: { id: true } },
             createdAt: true,
             lastLogin: true,
           },
@@ -89,8 +90,9 @@ router.post(
 
       // Verificar permisos de rol
       if (req.user!.role === Role.ADMIN_EMPRESA) {
-        // Admin de empresa solo puede crear checadores y choferes
-        if (![Role.CHECADOR, Role.CHOFER].includes(role)) {
+        // Admin de empresa puede crear checadores, choferes y otros gerentes de SU MISMA empresa
+        const rolesPermitidos = [Role.CHECADOR, Role.CHOFER, Role.ADMIN_EMPRESA];
+        if (!rolesPermitidos.includes(role)) {
           res.status(403).json({
             success: false,
             message: 'No puedes crear usuarios con este rol',
@@ -116,9 +118,17 @@ router.post(
 
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      const targetEmpresaId = req.user!.role === Role.ADMIN_EMPRESA 
-        ? req.user!.empresaId 
-        : empresaId;
+      const targetEmpresaId =
+        req.user!.role === Role.ADMIN_EMPRESA ? req.user!.empresaId! : (empresaId as string | undefined);
+
+      // Gerente (ADMIN_EMPRESA) debe tener siempre empresaId
+      if (role === Role.ADMIN_EMPRESA && !targetEmpresaId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Al crear un gerente (Admin Empresa) se requiere empresaId',
+        });
+      }
+      const userEmpresaId = role === Role.ADMIN_EMPRESA ? targetEmpresaId : targetEmpresaId ?? undefined;
 
       const user = await prisma.user.create({
         data: {
@@ -128,7 +138,7 @@ router.post(
           nombre,
           apellido,
           role,
-          empresaId: targetEmpresaId,
+          empresaId: userEmpresaId,
         },
         select: {
           id: true,

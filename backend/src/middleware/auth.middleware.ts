@@ -27,6 +27,9 @@ export const authenticate = async (
     const authHeader = req.headers.authorization;
 
     if (!authHeader?.startsWith('Bearer ')) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[auth] 401: No Bearer token in Authorization header');
+      }
       res.status(401).json({
         success: false,
         message: 'Token de autenticación requerido',
@@ -34,8 +37,29 @@ export const authenticate = async (
       return;
     }
 
+    if (!process.env.JWT_SECRET) {
+      console.error('[auth] JWT_SECRET no está definido en .env');
+      res.status(500).json({
+        success: false,
+        message: 'Error de configuración del servidor',
+      });
+      return;
+    }
+
     const token = authHeader.substring(7);
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
+    let decoded: JwtPayload;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET) as JwtPayload;
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[auth] 401: Token inválido o expirado', (err as Error).message);
+      }
+      res.status(401).json({
+        success: false,
+        message: 'Token inválido o expirado',
+      });
+      return;
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
@@ -50,6 +74,9 @@ export const authenticate = async (
     });
 
     if (!user || !user.activo) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[auth] 401: Usuario no encontrado o inactivo', { userId: decoded.userId, found: !!user, activo: user?.activo });
+      }
       res.status(401).json({
         success: false,
         message: 'Usuario no encontrado o inactivo',
@@ -60,6 +87,7 @@ export const authenticate = async (
     req.user = user;
     next();
   } catch (error) {
+    console.error('[auth] Error inesperado:', error);
     res.status(401).json({
       success: false,
       message: 'Token inválido o expirado',

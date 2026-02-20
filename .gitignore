@@ -45,3 +45,20 @@ docker/logs/
 *.key
 .turbo/
 chat-export*.json
+
+# Prisma seed compilado
+backend/prisma/seed.js
+backend/prisma/seed.d.ts
+backend/prisma/seed.js.map
+backend/prisma/seed.d.ts.map
+
+# Frontend build / cache
+frontend/dev-dist/
+frontend/tsconfig.node.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
+frontend/vite.config.d.ts
+frontend/vite.config.js
+
+# Datos voluminosos o temporales
+data-*.csv
+home/

@@ -21,6 +21,7 @@ enum Role {
   ADMIN_EMPRESA  // Gerente/dueño de empresa de transporte
   CHECADOR       // Persona en punto de control
   CHOFER         // Conductor del vehículo
+  PASAJERO       // Usuario de transporte público (suscrito a rutas)
 }
 
 enum TipoVehiculo {
@@ -55,9 +56,25 @@ enum EstadoPago {
   REEMBOLSADO
 }
 
+// Estadísticas de unidad: km, servicios, deterioros (compartido admin + chofer)
+enum TipoRegistroUnidad {
+  KM         // Kilometraje (valor numérico)
+  SERVICIO   // Servicio/mantenimiento (descripción)
+  DETERIORO  // Deterioro/falla (descripción)
+}
+
 // ===========================================
 // USUARIOS Y AUTENTICACIÓN
 // ===========================================
+// Jerarquía:
+// - SUPER_ADMIN: plataforma; cobra a las empresas (modelo SaaS).
+// - ADMIN_EMPRESA (gerente): pertenece a UNA empresa; lo crea Super Admin
+//   (o otro gerente de la misma empresa). Es el "admin de esa empresa".
+// - CHOFER / CHECADOR: pueden trabajar en DIFERENTES empresas/derroteros;
+//   su ámbito se define por ASIGNACIONES (vehículos, puntos de control), no
+//   por un único empresaId. User.empresaId para ellos es opcional (ej. empresa principal).
+// - PASAJERO: usuario final, sin empresa.
+//
 
 model User {
   id            String    @id @default(cuid())
@@ -70,14 +87,16 @@ model User {
   activo        Boolean   @default(true)
   avatar        String?
   
-  // Relaciones según rol
+  // Solo obligatorio para ADMIN_EMPRESA (gerente). Opcional para CHOFER/CHECADOR
+  // (empresa "principal"; el ámbito real viene de vehículos/puntos asignados).
   empresaId     String?
   empresa       Empresa?  @relation(fields: [empresaId], references: [id])
   
   // Relaciones específicas
   chofer        Chofer?
   checador      Checador?
-  
+  suscripcionesRuta SuscripcionRuta[]
+
   // Auditoría
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -149,9 +168,17 @@ model Derrotero {
   // Puntos de control en esta ruta
   puntosControl   PuntoControl[]
   vehiculos       Vehiculo[]
+  registrosRutaChofer RegistroRutaChofer[]
+  
+  // Horarios de operación (para pasajeros)
+  horarioInicio   String?       // "06:00"
+  horarioFin      String?       // "22:00"
   
   // Estado
   activo          Boolean        @default(true)
+  
+  // Suscripciones de pasajeros
+  suscripciones   SuscripcionRuta[]
   
   // Auditoría
   createdAt       DateTime       @default(now())
@@ -176,6 +203,10 @@ model PuntoControl {
   longitud        Decimal?      @db.Decimal(11, 8)
   direccion       String?
   
+  // Opcional: parada de referencia (ej. datos CDMX WiFi) para usar coordenadas
+  paradaReferenciaId String?    @unique
+  paradaReferencia   ParadaReferencia? @relation(fields: [paradaReferenciaId], references: [id])
+  
   // Derrotero al que pertenece
   derroteroId     String
   derrotero       Derrotero     @relation(fields: [derroteroId], references: [id])
@@ -199,6 +230,32 @@ model PuntoControl {
   @@index([derroteroId])
   @@index([checadorId])
   @@map("puntos_control")
+}
+
+// ===========================================
+// PARADAS DE REFERENCIA (CDMX WiFi / datos abiertos)
+// ===========================================
+// Catálogo de ubicaciones tipo parada desde fuentes externas (ej. WiFi transporte CDMX).
+// Sirve para enriquecer PuntoControl con coordenadas y para mapas/reportes.
+//
+
+model ParadaReferencia {
+  id              String         @id @default(cuid())
+  idExterno       String         @unique  // ID del dataset origen (ej. CETRAM_BALBUENA_AP_01)
+  nombre          String         // Nombre legible o derivado del id
+  latitud         Decimal        @db.Decimal(10, 8)
+  longitud        Decimal        @db.Decimal(11, 8)
+  alcaldia        String?
+  programa        String?        // Ej. "Transporte (Metrobus, Cablebus...)"
+  
+  // Un PuntoControl puede vincularse a una parada de referencia
+  puntoControl    PuntoControl?
+  
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([alcaldia])
+  @@map("paradas_referencia")
 }
 
 // ===========================================
@@ -230,7 +287,9 @@ model Vehiculo {
   
   // Check-ins de este vehículo
   checkIns        CheckIn[]
-  
+  registrosRutaChofer RegistroRutaChofer[]
+  registrosUnidad RegistroUnidad[]
+
   // Auditoría
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
@@ -244,6 +303,10 @@ model Vehiculo {
 // ===========================================
 // CHOFER (Extensión de User)
 // ===========================================
+// Un chofer puede trabajar en DIFERENTES empresas: se asigna a Vehículos,
+// y cada Vehículo pertenece a una Empresa/Derrotero. No hay empresaId aquí;
+// el ámbito es la unión de las empresas de sus vehículos asignados.
+//
 
 model Chofer {
   id              String       @id @default(cuid())
@@ -257,12 +320,16 @@ model Chofer {
   tipoLicencia    String?      // A, B, C, D, E
   vigenciaLicencia DateTime?
   
-  // Vehículos que puede manejar
+  // Vehículos que puede manejar (pueden ser de distintas empresas/derroteros)
   vehiculos       Vehiculo[]
   
   // Check-ins realizados
   checkIns        CheckIn[]
   
+  // Registros fin de ruta (ingresos y gastos)
+  registrosRuta   RegistroRutaChofer[]
+  registrosUnidad RegistroUnidad[]
+
   // Pagos realizados
   pagos           Pago[]
   
@@ -277,8 +344,80 @@ model Chofer {
 }
 
 // ===========================================
+// REGISTRO ESTADÍSTICAS UNIDAD (km, servicios, deterioros)
+// Compartido entre admin y chofer de la unidad.
+// ===========================================
+model RegistroUnidad {
+  id              String             @id @default(cuid())
+  vehiculoId      String
+  vehiculo        Vehiculo           @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+  choferId        String?            // Quien registró (chofer o null si admin)
+  chofer          Chofer?            @relation(fields: [choferId], references: [id])
+  tipo            TipoRegistroUnidad // KM | SERVICIO | DETERIORO
+  valorNumerico   Decimal?           // Para KM: kilometraje
+  descripcion     String?            // Para SERVICIO/DETERIORO: detalle
+  fecha           DateTime           @default(now())
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([vehiculoId])
+  @@index([choferId])
+  @@index([fecha])
+  @@map("registros_unidad")
+}
+
+// ===========================================
+// REGISTRO FIN DE RUTA (ingresos/egresos chofer)
+// ===========================================
+model RegistroRutaChofer {
+  id              String    @id @default(cuid())
+  choferId        String
+  chofer          Chofer    @relation(fields: [choferId], references: [id], onDelete: Cascade)
+  vehiculoId      String?
+  vehiculo        Vehiculo? @relation(fields: [vehiculoId], references: [id])
+  derroteroId     String?
+  derrotero       Derrotero? @relation(fields: [derroteroId], references: [id])
+  
+  fecha           DateTime  @default(now())
+  ingresos        Decimal   @default(0) @db.Decimal(10, 2)
+  gastos          Decimal   @default(0) @db.Decimal(10, 2)
+  notas           String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([choferId])
+  @@index([fecha])
+  @@map("registros_ruta_chofer")
+}
+
+// ===========================================
+// SUSCRIPCIÓN A RUTA (pasajero / usuario transporte)
+// ===========================================
+model SuscripcionRuta {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  derroteroId     String
+  derrotero       Derrotero  @relation(fields: [derroteroId], references: [id], onDelete: Cascade)
+  notificaciones  Boolean   @default(true)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, derroteroId])
+  @@index([userId])
+  @@index([derroteroId])
+  @@map("suscripciones_ruta")
+}
+
+// ===========================================
 // CHECADOR (Extensión de User)
 // ===========================================
+// Un checador puede trabajar en DIFERENTES empresas/derroteros: se asigna
+// a Puntos de control, y cada Punto pertenece a un Derrotero (Empresa).
+// El ámbito es la unión de las empresas de sus puntos asignados.
+//
 
 model Checador {
   id              String         @id @default(cuid())
@@ -291,7 +430,7 @@ model Checador {
   curp            String?
   ine             String?
   
-  // Puntos de control asignados
+  // Puntos de control asignados (pueden ser de distintos derroteros/empresas)
   puntosControl   PuntoControl[]
   
   // Check-ins registrados
@@ -318,11 +457,11 @@ model Checador {
 model CheckIn {
   id              String          @id @default(cuid())
   
-  // Quién lo registró y quién llegó
-  checadorId      String
-  checador        Checador        @relation(fields: [checadorId], references: [id])
-  choferId        String
-  chofer          Chofer          @relation(fields: [choferId], references: [id])
+  // Quién lo registró y quién llegó (opcional si no hay checador/chofer asignado)
+  checadorId      String?
+  checador        Checador?       @relation(fields: [checadorId], references: [id])
+  choferId        String?
+  chofer          Chofer?         @relation(fields: [choferId], references: [id])
   
   // Dónde y qué vehículo
   puntoControlId  String
@@ -409,6 +548,40 @@ model Pago {
 }
 
 // ===========================================
+// REGISTRO DE ACTIVIDAD (AUDIT LOG)
+// ===========================================
+// Para desarrollo y para Super Admin / Admin Empresa: ver qué hacen sus usuarios.
+model AuditLog {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  // Quién (opcional si es fallo de login)
+  userId      String?
+  userEmail   String?
+  userNombre  String?
+  role        String?  // Role del usuario al momento del evento
+  empresaId   String?  // Para filtrar por empresa (Admin Empresa)
+
+  // Qué pasó
+  accion      String   // LOGIN, LOGIN_FAIL, CHECKIN_CREATE, USER_CREATE, etc.
+  recurso     String?  // "check_in", "user", "auth"
+  recursoId   String?
+
+  // Detalles extra (JSON): placa, puntoControl, etc.
+  detalles    Json?
+
+  // Request (opcional)
+  ip          String?
+  userAgent   String?
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([empresaId])
+  @@index([accion])
+  @@map("audit_logs")
+}
+
+// ===========================================
 // CONFIGURACIÓN DEL SISTEMA
 // ===========================================
 
@@ -417,7 +590,7 @@ model ConfiguracionSistema {
   clave           String    @unique
   valor           String
   descripcion     String?
-  
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

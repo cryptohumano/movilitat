@@ -12,7 +12,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "import:paradas-cdmx": "tsx scripts/import-paradas-cdmx.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.3.0",
@@ -36,5 +37,8 @@
     "prisma": "^6.3.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }
