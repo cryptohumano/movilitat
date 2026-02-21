@@ -20,7 +20,8 @@ PWA mobile-first para gestionar check-ins de vehículos, optimizar operaciones y
 | **Super Admin** | Gestión completa del sistema, empresas, reportes globales |
 | **Admin Empresa** | Dashboard de empresa, vehículos, derroteros, reportes |
 | **Checador** | Registrar check-ins, ver ingresos, gestionar punto de control |
-| **Chofer** | Ver historial de check-ins, gastos, información de vehículo |
+| **Chofer** | Activar/terminar unidad, Mi QR, historial check-ins, cronómetro en ruta, reabrir unidad |
+| **Pasajero** | Registro sin invitación; seguir rutas; paradas cercanas (lista/mapa); ver unidades activas |
 
 ## 🛠️ Stack Tecnológico
 
@@ -44,14 +45,14 @@ PWA mobile-first para gestionar check-ins de vehículos, optimizar operaciones y
 ### Infraestructura
 - **Docker** - Contenedores
 - **Nginx** - Reverse proxy
-- **Redis** - Cache/Sesiones
+- **Redis** - Cache, sesiones y rate limiting
 
 ## 🚀 Inicio Rápido
 
 ### Requisitos
 - Node.js 20+
 - Corepack habilitado
-- Docker (opcional)
+- Docker (opcional; incluye PostgreSQL y Redis si usas `yarn docker:up`)
 
 ### 1. Clonar y configurar
 
@@ -106,25 +107,29 @@ yarn dev
 | Chofer Pedro | 5552222222 | admin123 |
 | Chofer Juan | 5553333333 | admin123 |
 | Chofer Edgar | 5554444444 | admin123 |
+| Pasajero (María) | 5550000001 | admin123 |
+
+**Pasajeros:** registro abierto en `/registro-pasajero` (sin invitación). Invitaciones para otros roles en `/registro` con token.
 
 Tras `yarn prisma:seed` hay **145 check-ins de ejemplo** en la ruta E01 (checador Juan, choferes Juan/Edgar/Pedro) para probar métricas e ingresos.
 
 ## 📁 Estructura del Proyecto
 
 ```
-movilitat/
+transporte/
 ├── backend/
 │   ├── src/
-│   │   ├── routes/         # Rutas API
-│   │   ├── middleware/     # Auth, validación
-│   │   └── lib/            # Prisma client
+│   │   ├── routes/         # API: auth, dashboard, chofer, checkin, paradas-cercanas, invitaciones, etc.
+│   │   ├── middleware/     # Auth, rate limit
+│   │   └── lib/            # Prisma, Redis, auditoría
 │   └── prisma/
 │       ├── schema.prisma   # Modelos de datos
+│       ├── migrations/
 │       └── seed.ts         # Datos iniciales
 ├── frontend/
 │   ├── src/
-│   │   ├── components/     # Componentes React
-│   │   ├── pages/          # Páginas/vistas
+│   │   ├── components/     # Componentes React (layout, UI, modales)
+│   │   ├── pages/          # Páginas (Dashboard, MisRutas, RegistroPasajero, etc.)
 │   │   ├── stores/         # Estado Zustand
 │   │   └── lib/            # Utilidades
 │   └── public/             # Assets estáticos
@@ -136,12 +141,15 @@ movilitat/
 ## 📱 Características PWA
 
 - ✅ Instalable como app nativa
-- ✅ Funciona offline
+- ✅ Funciona offline (básico)
 - ✅ Push notifications (próximamente)
 - ✅ Geolocalización
 - ✅ Cámara QR (escanear en check-in)
 - ✅ Mobile-first design
 - ✅ Safe area support (notch/home indicator)
+- ✅ **Pasajeros:** registro abierto, seguir rutas, paradas cercanas (lista + mapa Leaflet), unidades activas
+- ✅ **Choferes:** cronómetro "Tiempo en ruta", reabrir unidad; admin puede reabrir unidades encerradas
+- ✅ Mapas con Leaflet (paradas cercanas, actividad)
 
 ## 🗄️ Modelo de Datos
 
@@ -154,10 +162,16 @@ Empresa (11)
         └── Vehiculo (1,242)
               └── CheckIn
                     └── Pago
+              └── Chofer (N:N, asignación por día)
 
 Usuario
-  └── Chofer (extensión)
+  └── Chofer (extensión: unidad activa, unidadActivaDesde, sentido ida/vuelta)
   └── Checador (extensión)
+  └── Pasajero (sin empresa)
+        └── SuscripcionRuta (seguir rutas, notificaciones)
+
+Invitacion (tokens para registro de chofer/checador/admin)
+AuditLog (activar/terminar/reabrir unidad, etc.)
 ```
 
 ### Flujo de Check-in
@@ -236,6 +250,13 @@ En operación **no se maneja efectivo en el flujo**: el ingreso real viene de la
 
 En ambos casos: **no hay intercambio de efectivo en la operación**; el flujo es **Empresa → Suscripción → Plataforma** y de ahí (o vía empresa) **Incentivo al checador** según check-ins.
 
+### Pasajeros (seguir rutas)
+
+- **Registro:** cualquiera puede crearse cuenta como pasajero en `/registro-pasajero` (teléfono, nombre, contraseña). No requiere invitación.
+- **Seguir rutas:** en **Mis rutas** el pasajero puede seguir o dejar de seguir derroteros. La app usa “seguir” (no “suscripción de pago”).
+- **Paradas cercanas:** el dashboard pasajero muestra paradas cercanas según ubicación (lista o mapa). API: `GET /api/paradas-cercanas?lat=&lng=&radioKm=1`.
+- **Unidades activas:** en rutas que sigue, el pasajero ve cuántas unidades están activas ahora.
+
 ### Cobro en el punto (check-in)
 - **Monto fijo:** $15 MXN por paso de ruta. El chofer **paga en mano** al checador; el checador confirma en la app que le pagó esa ruta (QR/registro = cobrado).
 - El **50% no aplica** sobre esos $15; solo tendría sentido como **referido** (si checador/gerente embarca a otra empresa con código de referido, ahí puede haber un % o bono).
@@ -246,12 +267,13 @@ En ambos casos: **no hay intercambio de efectivo en la operación**; el flujo es
 ## 🔜 Roadmap
 
 - [x] Escaneo de QR con cámara
+- [x] Mapas con Leaflet (paradas cercanas, actividad)
+- [x] App para pasajeros (registro, seguir rutas, paradas cercanas, unidades activas)
+- [x] Dashboard chofer (cronómetro en ruta, reabrir unidad) y auditoría
 - [ ] Push notifications
 - [ ] Modo offline completo
 - [ ] Reportes avanzados
-- [ ] Mapas con Leaflet
-- [ ] Dashboard en tiempo real
-- [ ] App para pasajeros
+- [ ] Dashboard en tiempo real (más métricas en vivo)
 
 ## 📝 Licencia
 
