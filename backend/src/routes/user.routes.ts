@@ -50,6 +50,7 @@ router.get(
             avatar: true,
             empresa: { select: { id: true, nombreCorto: true } },
             chofer: { select: { id: true } },
+            checador: { select: { id: true } },
             createdAt: true,
             lastLogin: true,
           },

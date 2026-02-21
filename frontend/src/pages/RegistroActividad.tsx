@@ -29,6 +29,10 @@ const ACCION_LABEL: Record<string, string> = {
   USER_CREATE: 'Usuario creado',
   USER_UPDATE: 'Usuario actualizado',
   USER_DEACTIVATE: 'Usuario desactivado',
+  CHOFER_ACTIVAR_UNIDAD: 'Chofer activó unidad',
+  CHOFER_TERMINAR_UNIDAD: 'Chofer terminó unidad',
+  CHOFER_REABRIR_UNIDAD: 'Chofer reabrió unidad',
+  VEHICULO_REABRIR: 'Admin reabrió unidad',
 };
 
 export function RegistroActividadPage() {
@@ -72,7 +76,7 @@ export function RegistroActividadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background pb-nav">
       <Header />
       <main className="p-4 space-y-4">
         <div>
@@ -189,19 +193,21 @@ export function RegistroActividadPage() {
                     {log.detalles &&
                       typeof log.detalles === 'object' &&
                       Object.keys(log.detalles).length > 0 && (
-                        <div className="mt-1 text-muted-foreground">
+                        <div className="mt-1 text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
                           {'placa' in log.detalles && log.detalles.placa != null && (
                             <span>Placa: {String(log.detalles.placa)}</span>
                           )}
                           {'puntoControl' in log.detalles && log.detalles.puntoControl != null && (
-                            <span className="ml-2">
-                              Punto: {String(log.detalles.puntoControl)}
-                            </span>
+                            <span>Punto: {String(log.detalles.puntoControl)}</span>
                           )}
                           {'reason' in log.detalles && log.detalles.reason != null && (
-                            <span className="ml-2">
-                              Motivo: {String(log.detalles.reason)}
-                            </span>
+                            <span>Motivo: {String(log.detalles.reason)}</span>
+                          )}
+                          {'sentido' in log.detalles && log.detalles.sentido != null && (
+                            <span>Sentido: {String(log.detalles.sentido)}</span>
+                          )}
+                          {'cierraPorHoy' in log.detalles && log.detalles.cierraPorHoy === true && (
+                            <span>Encerró por hoy</span>
                           )}
                         </div>
                       )}

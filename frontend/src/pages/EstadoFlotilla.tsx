@@ -8,12 +8,19 @@ import {
   CheckCircle,
   XCircle,
   ClipboardList,
+  Eye,
+  Users,
+  UserCheck,
+  UserPlus,
+  Phone,
 } from 'lucide-react';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ModalDetalleUnidad } from '@/components/ModalDetalleUnidad';
+import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 import { formatCurrency } from '@/lib/utils';
@@ -75,10 +82,30 @@ const ESTADOS_LABEL: Record<string, string> = {
 };
 
 export function EstadoFlotillaPage() {
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const [flotilla, setFlotilla] = useState<{
     empresas: ResumenEmpresa[];
     derroteros: ResumenDerrotero[];
+    organizacion?: {
+      totalChoferes: number;
+      totalChecadores: number;
+      porEmpresa: Record<string, { choferes: number; checadores: number }>;
+      listaChoferes: Array<{
+        id: string;
+        nombre: string;
+        telefono: string;
+        email: string | null;
+        empresa: { id: string; nombreCorto: string | null } | null;
+      }>;
+      listaChecadores: Array<{
+        id: string;
+        nombre: string;
+        telefono: string;
+        email: string | null;
+        empresa: { id: string; nombreCorto: string | null } | null;
+      }>;
+    };
   } | null>(null);
   const [vehiculos, setVehiculos] = useState<VehiculoEstado[]>([]);
   const [loadingFlotilla, setLoadingFlotilla] = useState(true);
@@ -92,6 +119,7 @@ export function EstadoFlotillaPage() {
   const [checkInHasta, setCheckInHasta] = useState('');
   const [checkInEmpresa, setCheckInEmpresa] = useState('');
   const [checkInEstado, setCheckInEstado] = useState('');
+  const [detalleVehiculoId, setDetalleVehiculoId] = useState<string | null>(null);
 
   const canAccess =
     user?.role === 'SUPER_ADMIN' ||
@@ -104,7 +132,17 @@ export function EstadoFlotillaPage() {
     if (!canAccess) return;
     setLoadingFlotilla(true);
     api
-      .get<{ empresas: ResumenEmpresa[]; derroteros: ResumenDerrotero[] }>('/flotillas/estado')
+      .get<{
+        empresas: ResumenEmpresa[];
+        derroteros: ResumenDerrotero[];
+        organizacion?: {
+          totalChoferes: number;
+          totalChecadores: number;
+          porEmpresa: Record<string, { choferes: number; checadores: number }>;
+          listaChoferes: Array<{ id: string; nombre: string; telefono: string; email: string | null; empresa: { id: string; nombreCorto: string | null } | null }>;
+          listaChecadores: Array<{ id: string; nombre: string; telefono: string; email: string | null; empresa: { id: string; nombreCorto: string | null } | null }>;
+        };
+      }>('/flotillas/estado')
       .then((res) => {
         if (res.success && res.data) setFlotilla(res.data);
       })
@@ -161,7 +199,7 @@ export function EstadoFlotillaPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background pb-nav">
       <Header />
       <main className="p-4 space-y-6">
         <div>
@@ -178,6 +216,14 @@ export function EstadoFlotillaPage() {
             onClick={() => setTab('resumen')}
           >
             Resumen
+          </Button>
+          <Button
+            variant={tab === 'organizacion' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setTab('organizacion')}
+          >
+            <Users className="size-4 mr-1" />
+            Organización
           </Button>
           <Button
             variant={tab === 'unidades' ? 'default' : 'outline'}
@@ -298,6 +344,141 @@ export function EstadoFlotillaPage() {
           </>
         )}
 
+        {tab === 'organizacion' && (
+          <>
+            {loadingFlotilla ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="size-10 animate-spin text-muted-foreground" />
+              </div>
+            ) : flotilla?.organizacion ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap justify-end gap-2">
+                  {['SUPER_ADMIN', 'ADMIN_EMPRESA'].includes(user?.role ?? '') && (
+                    <Button variant="outline" size="sm" onClick={() => navigate('/vehiculos')} className="gap-2">
+                      <Bus className="size-4" />
+                      Gestionar vehículos (crear, editar unidades)
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={() => navigate('/usuarios')} className="gap-2">
+                    <UserPlus className="size-4" />
+                    Gestionar usuarios (agregar, quitar, cambiar rol)
+                  </Button>
+                </div>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Personal por rol</CardTitle>
+                    <p className="text-sm text-muted-foreground font-normal">
+                      Choferes y checadores activos en el ámbito de tu flotilla
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="rounded-lg border border-border p-4 flex items-center gap-3">
+                        <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Bus className="size-6 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold">{flotilla.organizacion.totalChoferes}</p>
+                          <p className="text-sm text-muted-foreground">Choferes</p>
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-border p-4 flex items-center gap-3">
+                        <div className="size-12 rounded-full bg-success/10 flex items-center justify-center">
+                          <UserCheck className="size-6 text-success" />
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold">{flotilla.organizacion.totalChecadores}</p>
+                          <p className="text-sm text-muted-foreground">Checadores</p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                {(flotilla.organizacion.listaChoferes?.length > 0 || flotilla.organizacion.listaChecadores?.length > 0) && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Quiénes son</CardTitle>
+                      <p className="text-sm text-muted-foreground font-normal">
+                        Lista de choferes y checadores. Para agregar, quitar o cambiar rol ve a Usuarios.
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {flotilla.organizacion.listaChoferes?.length > 0 && (
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                            <Bus className="size-4" /> Choferes ({flotilla.organizacion.listaChoferes.length})
+                          </p>
+                          <ul className="space-y-2">
+                            {flotilla.organizacion.listaChoferes.map((u) => (
+                              <li key={u.id} className="flex items-center justify-between py-2 px-3 rounded-md bg-muted/30">
+                                <div className="min-w-0">
+                                  <p className="font-medium truncate">{u.nombre}</p>
+                                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Phone className="size-3" /> {u.telefono}
+                                    {u.empresa?.nombreCorto && <span> · {u.empresa.nombreCorto}</span>}
+                                  </p>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {flotilla.organizacion.listaChecadores?.length > 0 && (
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                            <UserCheck className="size-4" /> Checadores ({flotilla.organizacion.listaChecadores.length})
+                          </p>
+                          <ul className="space-y-2">
+                            {flotilla.organizacion.listaChecadores.map((u) => (
+                              <li key={u.id} className="flex items-center justify-between py-2 px-3 rounded-md bg-muted/30">
+                                <div className="min-w-0">
+                                  <p className="font-medium truncate">{u.nombre}</p>
+                                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Phone className="size-3" /> {u.telefono}
+                                    {u.empresa?.nombreCorto && <span> · {u.empresa.nombreCorto}</span>}
+                                  </p>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+                {flotilla.empresas?.length > 1 && Object.keys(flotilla.organizacion.porEmpresa ?? {}).length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Building2 className="size-4" />
+                        Por empresa
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-3">
+                        {flotilla.empresas.map((e) => {
+                          const org = flotilla.organizacion!.porEmpresa[e.id];
+                          return (
+                            <li key={e.id} className="flex justify-between items-center py-2 border-b border-border last:border-0">
+                              <span className="font-medium">{e.nombreCorto}</span>
+                              <div className="flex gap-4 text-sm text-muted-foreground">
+                                <span>{org?.choferes ?? 0} choferes</span>
+                                <span>{org?.checadores ?? 0} checadores</span>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm py-4">No hay datos de organización.</p>
+            )}
+          </>
+        )}
+
         {tab === 'unidades' && (
           <>
             <div className="flex flex-wrap gap-2 items-center">
@@ -374,6 +555,15 @@ export function EstadoFlotillaPage() {
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => setDetalleVehiculoId(v.id)}
+                          >
+                            <Eye className="size-4 mr-1" />
+                            Ver detalle
+                          </Button>
                           <Badge
                             variant={
                               v.estado === 'ACTIVO' ? 'default' :
@@ -513,6 +703,10 @@ export function EstadoFlotillaPage() {
         )}
       </main>
       <BottomNav />
+      <ModalDetalleUnidad
+        vehiculoId={detalleVehiculoId}
+        onClose={() => setDetalleVehiculoId(null)}
+      />
     </div>
   );
 }

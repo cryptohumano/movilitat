@@ -40,11 +40,19 @@ router.get(
       hoy.setHours(0, 0, 0, 0);
       const derroteroIds = [...new Set(suscripciones.map((s) => s.derrotero.id))];
 
-      const [vehiculosPorDerrotero, checkInsHoyPorVehiculo, ultimoCheckInPorDerrotero] = await Promise.all([
+      const [vehiculosPorDerrotero, vehiculosActivosAhora, checkInsHoyPorVehiculo, ultimoCheckInPorDerrotero] = await Promise.all([
         prisma.vehiculo.groupBy({
           by: ['derroteroId'],
           where: { derroteroId: { in: derroteroIds }, estado: 'ACTIVO' },
           _count: { id: true },
+        }),
+        // Unidades con chofer que inició ruta (en operación ahora). groupBy no admite filtros por relación, usamos findMany.
+        prisma.vehiculo.findMany({
+          where: {
+            derroteroId: { in: derroteroIds },
+            choferActivo: { isNot: null },
+          },
+          select: { derroteroId: true },
         }),
         prisma.checkIn.groupBy({
           by: ['vehiculoId'],
@@ -68,6 +76,10 @@ router.get(
       const unidadesPorDerrotero = Object.fromEntries(
         vehiculosPorDerrotero.map((g) => [g.derroteroId!, g._count.id])
       );
+      const unidadesActivasAhoraPorDerroteroMap: Record<string, number> = {};
+      for (const v of vehiculosActivosAhora) {
+        if (v.derroteroId) unidadesActivasAhoraPorDerroteroMap[v.derroteroId] = (unidadesActivasAhoraPorDerroteroMap[v.derroteroId] ?? 0) + 1;
+      }
       const conActividadHoy = new Set(checkInsHoyPorVehiculo.map((c) => c.vehiculoId));
       const vehiculosConActividad = await prisma.vehiculo.findMany({
         where: { id: { in: [...conActividadHoy] } },
@@ -87,6 +99,7 @@ router.get(
         ...s,
         estadoRuta: {
           unidadesEnRuta: unidadesPorDerrotero[s.derrotero.id] ?? 0,
+          unidadesActivasAhora: unidadesActivasAhoraPorDerroteroMap[s.derrotero.id] ?? 0,
           conActividadHoy: conActividadPorDerrotero[s.derrotero.id] ?? 0,
           ultimaActividadAt: ultimoPorDerrotero[s.derrotero.id]?.toISOString() ?? null,
         },
@@ -95,7 +108,7 @@ router.get(
       res.json({ success: true, data });
     } catch (e) {
       console.error('Error listando suscripciones:', e);
-      res.status(500).json({ success: false, message: 'Error al obtener suscripciones' });
+      res.status(500).json({ success: false, message: 'Error al obtener rutas que sigues' });
     }
   }
 );
@@ -169,7 +182,7 @@ router.delete(
       res.json({ success: true, message: 'Suscripción eliminada' });
     } catch (e) {
       console.error('Error eliminando suscripción:', e);
-      res.status(500).json({ success: false, message: 'Error al desuscribirse' });
+      res.status(500).json({ success: false, message: 'Error al dejar de seguir' });
     }
   }
 );

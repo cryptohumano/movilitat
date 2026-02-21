@@ -230,7 +230,7 @@ export function RegistrosRutaPage() {
   const neto = (i: number, g: number) => i - g;
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background pb-nav">
       <Header />
       <main className="p-4 space-y-6">
         <div>

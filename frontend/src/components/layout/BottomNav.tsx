@@ -45,9 +45,21 @@ const navItems: NavItem[] = [
     roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA', 'CHECADOR']
   },
   { 
+    to: '/vehiculos', 
+    icon: Bus, 
+    label: 'Vehículos',
+    roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA']
+  },
+  { 
     to: '/paradas-referencia', 
     icon: MapPin, 
-    label: 'Paradas',
+    label: 'Paradas ref.',
+    roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA']
+  },
+  { 
+    to: '/rutas', 
+    icon: Route, 
+    label: 'Rutas',
     roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA']
   },
   { 
@@ -60,6 +72,12 @@ const navItems: NavItem[] = [
     to: '/mi-qr', 
     icon: QrCode, 
     label: 'Mi QR',
+    roles: ['CHOFER']
+  },
+  { 
+    to: '/mis-unidades', 
+    icon: Bus, 
+    label: 'Mis unidades',
     roles: ['CHOFER']
   },
   { 
@@ -93,12 +111,6 @@ const navItems: NavItem[] = [
     roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA']
   },
   { 
-    to: '/vehiculos', 
-    icon: Bus, 
-    label: 'Vehículos',
-    roles: ['SUPER_ADMIN', 'ADMIN_EMPRESA']
-  },
-  { 
     to: '/empresas', 
     icon: Building2, 
     label: 'Empresas',
@@ -128,28 +140,34 @@ export function BottomNav() {
   ).slice(0, 5); // Máximo 5 items en la barra
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-lg border-t border-border pb-[env(safe-area-inset-bottom)]">
-      <div className="flex items-center justify-around px-2 py-1">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-lg border-t border-border bottom-nav"
+      role="navigation"
+      aria-label="Navegación principal"
+    >
+      <div className="flex items-center justify-around px-1 py-2 min-h-14 max-w-lg mx-auto">
         {filteredItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
               cn(
-                'flex flex-col items-center justify-center flex-1 py-2 px-3 transition-colors',
+                'flex flex-col items-center justify-center flex-1 min-w-0 py-2 px-2 sm:px-3 transition-colors rounded-lg touch-manipulation',
+                'min-h-[3rem] active:bg-muted/50',
                 isActive ? 'text-primary' : 'text-muted-foreground'
               )
             }
           >
             {({ isActive }) => (
               <>
-                <item.icon 
+                <item.icon
                   className={cn(
-                    'size-6 transition-colors',
+                    'size-6 shrink-0 transition-colors',
                     isActive ? 'text-primary' : 'text-muted-foreground'
-                  )} 
+                  )}
+                  aria-hidden
                 />
-                <span className="text-xs mt-1">{item.label}</span>
+                <span className="text-xs mt-1 truncate w-full text-center">{item.label}</span>
               </>
             )}
           </NavLink>

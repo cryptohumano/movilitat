@@ -8,11 +8,14 @@ import {
   Pencil,
   Key,
   Building2,
+  Link2,
+  Copy,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { BottomNav } from '@/components/layout/BottomNav';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 
@@ -53,6 +56,12 @@ export function UsuariosPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteRole, setInviteRole] = useState<'CHECADOR' | 'CHOFER' | 'ADMIN_EMPRESA'>('CHECADOR');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteLink, setInviteLink] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteEmpresaId, setInviteEmpresaId] = useState('');
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isAdminEmpresa = user?.role === 'ADMIN_EMPRESA';
@@ -170,6 +179,33 @@ export function UsuariosPage() {
     }
   };
 
+  const handleGenerarInvitacion = async () => {
+    setInviteLoading(true);
+    setInviteLink('');
+    setError('');
+    try {
+      const body: { role: 'CHECADOR' | 'CHOFER' | 'ADMIN_EMPRESA'; email?: string; empresaId?: string } = {
+        role: inviteRole,
+      };
+      if (inviteEmail.trim()) body.email = inviteEmail.trim();
+      if (isSuperAdmin && inviteEmpresaId) body.empresaId = inviteEmpresaId;
+      const res = await api.post<{ link: string }>('/invitations', body);
+      if (res.success && res.data?.link) {
+        setInviteLink(res.data.link);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al generar invitación');
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const copyInviteLink = () => {
+    if (!inviteLink) return;
+    navigator.clipboard.writeText(inviteLink);
+    window.alert('Enlace copiado al portapapeles');
+  };
+
   const handleResetPassword = async (id: string) => {
     const newPassword = window.prompt('Nueva contraseña (mínimo 6 caracteres)');
     if (!newPassword || newPassword.length < 6) return;
@@ -205,7 +241,7 @@ export function UsuariosPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col pb-24">
+    <div className="min-h-screen bg-background flex flex-col pb-nav">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-lg border-b border-border pt-[env(safe-area-inset-top)]">
         <div className="flex items-center gap-3 px-4 h-14">
           <Button variant="ghost" size="icon-sm" onClick={() => navigate(-1)}>
@@ -215,7 +251,7 @@ export function UsuariosPage() {
         </div>
       </header>
 
-      <main className="flex-1 p-4 space-y-4">
+      <main className="flex-1 p-4 space-y-4 overflow-auto">
         {error && (
           <Card className="border-destructive bg-destructive/10">
             <CardContent className="p-3 text-sm text-destructive">{error}</CardContent>
@@ -243,7 +279,73 @@ export function UsuariosPage() {
             <Plus className="size-4" />
             Nuevo usuario
           </Button>
+          <Button variant="outline" onClick={() => setShowInvite((s) => !s)} className="gap-2">
+            <Link2 className="size-4" />
+            Invitar por enlace
+          </Button>
         </div>
+
+        {showInvite && (
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <h3 className="font-medium">Generar enlace de invitación</h3>
+              <p className="text-sm text-muted-foreground">
+                Quien reciba el enlace podrá registrarse y se le asignará el rol y la empresa que elijas.
+              </p>
+              <div className="flex flex-wrap gap-2 items-end">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Rol</label>
+                  <select
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value as 'CHECADOR' | 'CHOFER' | 'ADMIN_EMPRESA')}
+                    className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="CHECADOR">{ROLES.CHECADOR}</option>
+                    <option value="CHOFER">{ROLES.CHOFER}</option>
+                    <option value="ADMIN_EMPRESA">{ROLES.ADMIN_EMPRESA}</option>
+                  </select>
+                </div>
+                {isSuperAdmin && empresas.length > 0 && (
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Empresa</label>
+                    <select
+                      value={inviteEmpresaId}
+                      onChange={(e) => setInviteEmpresaId(e.target.value)}
+                      className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Sin empresa</option>
+                      {empresas.map((e) => (
+                        <option key={e.id} value={e.id}>{e.nombreCorto || e.codigo}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Email (opcional)</label>
+                  <Input
+                    type="email"
+                    placeholder="correo@ejemplo.com"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className="w-48"
+                  />
+                </div>
+                <Button onClick={handleGenerarInvitacion} disabled={inviteLoading}>
+                  {inviteLoading ? <Loader2 className="size-4 animate-spin" /> : 'Generar enlace'}
+                </Button>
+              </div>
+              {inviteLink && (
+                <div className="flex gap-2 items-center pt-2 border-t border-border">
+                  <Input readOnly value={inviteLink} className="font-mono text-xs flex-1" />
+                  <Button variant="outline" size="sm" onClick={copyInviteLink} className="gap-1">
+                    <Copy className="size-4" />
+                    Copiar
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {showForm && (
           <Card>
@@ -409,6 +511,7 @@ export function UsuariosPage() {
           </div>
         )}
       </main>
+      <BottomNav />
     </div>
   );
 }

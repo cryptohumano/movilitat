@@ -125,18 +125,28 @@ export function LoginPage() {
             </Button>
           </form>
 
-          {/* Register link */}
-          <div className="mt-6 text-center">
+          {/* Register links */}
+          <div className="mt-6 space-y-2 text-center">
             <p className="text-sm text-muted-foreground">
-              ¿No tienes cuenta?{' '}
-              <button 
+              ¿No tienes cuenta?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
                 type="button"
-                className="text-primary hover:underline font-medium"
+                className="text-primary hover:underline font-medium text-sm"
+                onClick={() => navigate('/registro-pasajero')}
+              >
+                Crear cuenta como pasajero
+              </button>
+              <span className="text-muted-foreground text-xs">o</span>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground text-sm"
                 onClick={() => navigate('/registro')}
               >
-                Regístrate
+                Tengo un enlace de invitación
               </button>
-            </p>
+            </div>
           </div>
         </CardContent>
       </Card>

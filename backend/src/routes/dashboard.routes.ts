@@ -250,6 +250,7 @@ async function getDashboardChecador(userId: string, hoy: Date, inicioMes: Date) 
         include: {
           derrotero: { select: { nombre: true } },
         },
+        orderBy: { orden: 'asc' },
       },
     },
   });
@@ -301,6 +302,63 @@ async function getDashboardChecador(userId: string, hoy: Date, inicioMes: Date) 
   const cobradoMes = ingresosMes._sum.monto?.toNumber() || 0;
   const totalEstimadoMes = aggregateTotalMes._sum.monto?.toNumber() || 0;
 
+  // Estado por punto: qué unidades pasaron y cuáles no (esperadas pero no pasaron → mostrar en rojo)
+  const puntosConEstado: Array<{
+    id: string;
+    nombre: string;
+    orden: number;
+    derroteroId: string;
+    derroteroNombre: string;
+    pasaron: Array<{ vehiculoId: string; placa: string }>;
+    noPasaron: Array<{ vehiculoId: string; placa: string }>;
+  }> = [];
+  for (const punto of checador.puntosControl) {
+    const derroteroId = punto.derroteroId;
+    const puntosDelDerrotero = checador.puntosControl
+      .filter((p) => p.derroteroId === derroteroId)
+      .sort((a, b) => a.orden - b.orden);
+    const idx = puntosDelDerrotero.findIndex((p) => p.id === punto.id);
+    const puntoAnterior = idx > 0 ? puntosDelDerrotero[idx - 1] : null;
+
+    const vehiculosQuePasaronAqui = await prisma.checkIn.findMany({
+      where: { puntoControlId: punto.id, fechaHora: { gte: hoy } },
+      select: { vehiculoId: true, vehiculo: { select: { placa: true } } },
+      distinct: ['vehiculoId'],
+    });
+    const pasaron = vehiculosQuePasaronAqui.map((c) => ({
+      vehiculoId: c.vehiculoId,
+      placa: c.vehiculo.placa,
+    }));
+
+    let noPasaron: Array<{ vehiculoId: string; placa: string }> = [];
+    if (puntoAnterior) {
+      const vehiculosQuePasaronAnterior = await prisma.checkIn.findMany({
+        where: { puntoControlId: puntoAnterior.id, fechaHora: { gte: hoy } },
+        select: { vehiculoId: true, vehiculo: { select: { placa: true } } },
+        distinct: ['vehiculoId'],
+      });
+      const idsPasaronAqui = new Set(pasaron.map((p) => p.vehiculoId));
+      noPasaron = vehiculosQuePasaronAnterior
+        .filter((c) => !idsPasaronAqui.has(c.vehiculoId))
+        .map((c) => ({ vehiculoId: c.vehiculoId, placa: c.vehiculo.placa }));
+    }
+
+    puntosConEstado.push({
+      id: punto.id,
+      nombre: punto.nombre,
+      orden: punto.orden,
+      derroteroId,
+      derroteroNombre: (punto.derrotero as { nombre: string })?.nombre ?? '',
+      pasaron,
+      noPasaron,
+    });
+  }
+  // Ordenar por derrotero y orden
+  puntosConEstado.sort((a, b) => {
+    if (a.derroteroId !== b.derroteroId) return a.derroteroId.localeCompare(b.derroteroId);
+    return a.orden - b.orden;
+  });
+
   return {
     tipo: 'CHECADOR',
     checador: {
@@ -315,6 +373,7 @@ async function getDashboardChecador(userId: string, hoy: Date, inicioMes: Date) 
       cobradoMes,
       totalEstimadoMes,
     },
+    estadoPuntos: puntosConEstado,
     ultimosCheckIns,
   };
 }
@@ -323,10 +382,14 @@ async function getDashboardChofer(userId: string, hoy: Date, inicioMes: Date) {
   const chofer = await prisma.chofer.findUnique({
     where: { userId },
     include: {
-      vehiculos: {
+      asignacionesVehiculo: {
         include: {
-          empresa: { select: { nombreCorto: true } },
-          derrotero: { select: { nombre: true } },
+          vehiculo: {
+            include: {
+              empresa: { select: { nombreCorto: true } },
+              derrotero: { select: { nombre: true } },
+            },
+          },
         },
       },
     },
@@ -336,7 +399,7 @@ async function getDashboardChofer(userId: string, hoy: Date, inicioMes: Date) {
     return { tipo: 'CHOFER', error: 'No tienes perfil de chofer' };
   }
 
-  const [checkInsHoy, checkInsMes, gastoMes] = await Promise.all([
+  const [checkInsHoy, checkInsMes, gastoMes, checkInsFechasMes, registrosRutaMes] = await Promise.all([
     prisma.checkIn.count({
       where: { choferId: chofer.id, fechaHora: { gte: hoy } },
     }),
@@ -347,7 +410,30 @@ async function getDashboardChofer(userId: string, hoy: Date, inicioMes: Date) {
       where: { choferId: chofer.id, fechaHora: { gte: inicioMes } },
       _sum: { monto: true },
     }),
+    prisma.checkIn.findMany({
+      where: { choferId: chofer.id, fechaHora: { gte: inicioMes } },
+      select: { fechaHora: true },
+    }),
+    prisma.registroRutaChofer.aggregate({
+      where: { choferId: chofer.id, fecha: { gte: inicioMes } },
+      _sum: { ingresos: true, gastos: true },
+    }),
   ]);
+
+  const porDia = new Map<string, { min: number; max: number }>();
+  for (const c of checkInsFechasMes) {
+    const key = c.fechaHora.toISOString().slice(0, 10);
+    const t = c.fechaHora.getTime();
+    if (!porDia.has(key)) porDia.set(key, { min: t, max: t });
+    else {
+      const v = porDia.get(key)!;
+      porDia.set(key, { min: Math.min(v.min, t), max: Math.max(v.max, t) });
+    }
+  }
+  let minutosTrabajadosMes = 0;
+  for (const v of porDia.values()) {
+    minutosTrabajadosMes += (v.max - v.min) / 60000;
+  }
 
   // Últimos check-ins
   const ultimosCheckIns = await prisma.checkIn.findMany({
@@ -362,18 +448,25 @@ async function getDashboardChofer(userId: string, hoy: Date, inicioMes: Date) {
     },
   });
 
+  const vehiculos = (chofer.asignacionesVehiculo ?? []).map((a) => a.vehiculo);
   return {
     tipo: 'CHOFER',
     chofer: {
       id: chofer.id,
       licencia: chofer.licencia,
       totalCheckIns: chofer.totalCheckIns,
-      vehiculos: chofer.vehiculos,
+      vehiculos,
     },
     actividad: {
       checkInsHoy,
       checkInsMes,
       gastoMes: gastoMes._sum.monto?.toNumber() ?? 0,
+      ingresosMesBitacora: registrosRutaMes._sum.ingresos?.toNumber() ?? 0,
+      gastosMesBitacora: registrosRutaMes._sum.gastos?.toNumber() ?? 0,
+      horasTrabajadasMes: {
+        minutos: Math.round(minutosTrabajadosMes),
+        horas: Math.round((minutosTrabajadosMes / 60) * 10) / 10,
+      },
     },
     ultimosCheckIns,
   };

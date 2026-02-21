@@ -325,10 +325,73 @@ async function main() {
         nombre: 'Punto Demo Calacoaya',
         derroteroId: primerDerrotero.id,
         checadorId: checador.id,
+        orden: 1,
         activo: true,
       },
     });
   }
+
+  // Ruta teórica Insurgentes (puntos tipo WiFi/referencia, orden ida = Norte→Sur; vuelta = mismo camino, orden inverso)
+  const puntosInsurgentes: Array<{ idExterno: string; nombre: string; latitud: number; longitud: number; alcaldia: string }> = [
+    { idExterno: 'INSURGENTES_01', nombre: 'Cuatro Caminos', latitud: 19.461, longitud: -99.142, alcaldia: 'Miguel Hidalgo' },
+    { idExterno: 'INSURGENTES_02', nombre: 'Normal', latitud: 19.455, longitud: -99.148, alcaldia: 'Cuauhtémoc' },
+    { idExterno: 'INSURGENTES_03', nombre: 'San Cosme', latitud: 19.448, longitud: -99.152, alcaldia: 'Cuauhtémoc' },
+    { idExterno: 'INSURGENTES_04', nombre: 'Revolución', latitud: 19.442, longitud: -99.155, alcaldia: 'Cuauhtémoc' },
+    { idExterno: 'INSURGENTES_05', nombre: 'Juárez', latitud: 19.432, longitud: -99.158, alcaldia: 'Cuauhtémoc' },
+    { idExterno: 'INSURGENTES_06', nombre: 'Glorieta Insurgentes', latitud: 19.423721, longitud: -99.162884, alcaldia: 'Cuauhtémoc' },
+    { idExterno: 'INSURGENTES_07', nombre: 'Roma Sur', latitud: 19.418, longitud: -99.165, alcaldia: 'Cuauhtémoc' },
+    { idExterno: 'INSURGENTES_08', nombre: 'Nápoles', latitud: 19.405, longitud: -99.172, alcaldia: 'Benito Juárez' },
+    { idExterno: 'INSURGENTES_09', nombre: 'Teatro de los Insurgentes', latitud: 19.364926, longitud: -99.181825, alcaldia: 'Benito Juárez' },
+    { idExterno: 'INSURGENTES_10', nombre: 'Villa Olímpica', latitud: 19.355, longitud: -99.19, alcaldia: 'Coyoacán' },
+    { idExterno: 'INSURGENTES_11', nombre: 'Ciudad Universitaria', latitud: 19.328, longitud: -99.185, alcaldia: 'Coyoacán' },
+    { idExterno: 'INSURGENTES_12', nombre: 'Tasqueña', latitud: 19.345, longitud: -99.192, alcaldia: 'Coyoacán' },
+  ];
+  const empresaInsurgentes = await prisma.empresa.create({
+    data: {
+      codigo: 'E99',
+      nombre: 'Ruta teórica Insurgentes (demo)',
+      nombreCorto: 'Insurgentes',
+      totalVehiculos: 0,
+      totalDerroteros: 1,
+    },
+  });
+  const derroteroInsurgentes = await prisma.derrotero.create({
+    data: {
+      numero: 1,
+      nombre: 'Insurgentes (Cuatro Caminos - Tasqueña)',
+      empresaId: empresaInsurgentes.id,
+      horarioInicio: '05:00',
+      horarioFin: '23:00',
+    },
+  });
+  const paradasInsurgentesIds: string[] = [];
+  for (const p of puntosInsurgentes) {
+    const parada = await prisma.paradaReferencia.upsert({
+      where: { idExterno: p.idExterno },
+      create: {
+        idExterno: p.idExterno,
+        nombre: p.nombre,
+        latitud: p.latitud,
+        longitud: p.longitud,
+        alcaldia: p.alcaldia,
+        programa: 'Transporte (Metrobus, Cablebus, Tren Ligero, Trolebus, etc.)',
+      },
+      update: { nombre: p.nombre, latitud: p.latitud, longitud: p.longitud, alcaldia: p.alcaldia },
+    });
+    paradasInsurgentesIds.push(parada.id);
+  }
+  for (let i = 0; i < paradasInsurgentesIds.length; i++) {
+    await prisma.puntoControl.create({
+      data: {
+        nombre: puntosInsurgentes[i].nombre,
+        derroteroId: derroteroInsurgentes.id,
+        paradaReferenciaId: paradasInsurgentesIds[i],
+        orden: i + 1,
+        activo: true,
+      },
+    });
+  }
+  console.log(`   ✅ Ruta teórica Insurgentes: ${puntosInsurgentes.length} paradas (ida: orden 1→${puntosInsurgentes.length}, vuelta: inverso)`);
 
   // Choferes de prueba: Pedro, Juan y Edgar (E01) para datos de negocio
   if (!empresaE01) throw new Error('Empresa E01 no encontrada');
@@ -465,8 +528,8 @@ async function main() {
   console.log('\n' + '='.repeat(50));
   console.log('📊 RESUMEN DEL SEED');
   console.log('='.repeat(50));
-  console.log(`   🏢 Empresas: ${empresasData.length}`);
-  console.log(`   🛣️  Derroteros: ${totalDerroteros}`);
+  console.log(`   🏢 Empresas: ${empresasData.length + 1} (incl. ruta teórica Insurgentes)`);
+  console.log(`   🛣️  Derroteros: ${totalDerroteros + 1}`);
   console.log(`   🚌 Vehículos (registrados en PDF): ${totalVehiculos}`);
   console.log(`   👤 Usuarios creados: 8 (admin, empresa, checador, choferes Juan/Edgar/Pedro, pasajero)`);
   console.log('='.repeat(50));

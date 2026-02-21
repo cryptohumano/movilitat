@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware.js';
+import { loginRateLimit } from '../middleware/rateLimit.middleware.js';
 import { writeAudit } from '../lib/audit.js';
 
 const router = Router();
@@ -22,8 +23,25 @@ const registerSchema = z.object({
   email: z.string().email().optional(),
 });
 
-// POST /api/auth/login (acepta teléfono o correo electrónico)
-router.post('/login', async (req, res: Response) => {
+const registerPasajeroSchema = z.object({
+  telefono: z.string().min(10, 'Teléfono de al menos 10 dígitos'),
+  password: z.string().min(6, 'Contraseña de al menos 6 caracteres'),
+  nombre: z.string().min(2, 'Nombre requerido'),
+  apellido: z.string().optional(),
+  email: z.string().email().optional(),
+});
+
+const registerWithInvitationSchema = z.object({
+  invitacion: z.string().min(1, 'Token de invitación requerido'),
+  telefono: z.string().min(10),
+  password: z.string().min(6),
+  nombre: z.string().min(2),
+  apellido: z.string().optional(),
+  email: z.string().email().optional(),
+});
+
+// POST /api/auth/login (acepta teléfono o correo electrónico). Rate limit: 5 intentos por IP / 15 min
+router.post('/login', loginRateLimit, async (req, res: Response) => {
   const sendError = (status: number, message: string) => {
     try {
       res.status(status).json({ success: false, message });
@@ -219,6 +237,187 @@ router.post('/register', async (req, res: Response) => {
       return;
     }
     console.error('Error en register:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error en el servidor',
+    });
+  }
+});
+
+// POST /api/auth/register-pasajero - Registro abierto solo para pasajeros (sin invitación)
+router.post('/register-pasajero', async (req, res: Response) => {
+  try {
+    const data = registerPasajeroSchema.parse(req.body);
+
+    const existingByPhone = await prisma.user.findUnique({
+      where: { telefono: data.telefono.trim() },
+    });
+    if (existingByPhone) {
+      res.status(400).json({
+        success: false,
+        message: 'Este teléfono ya está registrado',
+      });
+      return;
+    }
+    if (data.email) {
+      const existingByEmail = await prisma.user.findUnique({
+        where: { email: data.email.trim() },
+      });
+      if (existingByEmail) {
+        res.status(400).json({
+          success: false,
+          message: 'Este correo ya está registrado',
+        });
+        return;
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        telefono: data.telefono.trim(),
+        password: hashedPassword,
+        nombre: data.nombre.trim(),
+        apellido: data.apellido?.trim() ?? null,
+        email: data.email?.trim() ?? null,
+        role: 'PASAJERO',
+        empresaId: null,
+      },
+    });
+
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      process.env.JWT_SECRET!,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
+    res.status(201).json({
+      success: true,
+      data: {
+        token,
+        user: {
+          id: user.id,
+          telefono: user.telefono,
+          email: user.email,
+          nombre: user.nombre,
+          apellido: user.apellido,
+          role: user.role,
+          empresaId: null,
+        },
+      },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message: 'Datos inválidos',
+        errors: error.errors,
+      });
+      return;
+    }
+    console.error('Error en register-pasajero:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error en el servidor',
+    });
+  }
+});
+
+// POST /api/auth/register-with-invitation - Registro usando link de invitación (rol/empresa definidos por la invitación)
+router.post('/register-with-invitation', async (req, res: Response) => {
+  try {
+    const data = registerWithInvitationSchema.parse(req.body);
+
+    const inv = await prisma.invitacion.findUnique({
+      where: { token: data.invitacion },
+      include: { empresa: { select: { id: true } } },
+    });
+    if (!inv) {
+      res.status(400).json({ success: false, message: 'Enlace de invitación no válido' });
+      return;
+    }
+    if (inv.usedAt) {
+      res.status(400).json({ success: false, message: 'Esta invitación ya fue utilizada' });
+      return;
+    }
+    if (new Date() > inv.expiresAt) {
+      res.status(400).json({ success: false, message: 'El enlace de invitación ha expirado' });
+      return;
+    }
+
+    const existingByPhone = await prisma.user.findUnique({
+      where: { telefono: data.telefono },
+    });
+    if (existingByPhone) {
+      res.status(400).json({ success: false, message: 'Este teléfono ya está registrado' });
+      return;
+    }
+    if (data.email) {
+      const existingByEmail = await prisma.user.findUnique({
+        where: { email: data.email },
+      });
+      if (existingByEmail) {
+        res.status(400).json({ success: false, message: 'Este correo ya está registrado' });
+        return;
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        telefono: data.telefono,
+        password: hashedPassword,
+        nombre: data.nombre,
+        apellido: data.apellido ?? null,
+        email: data.email ?? inv.email ?? null,
+        role: inv.role,
+        empresaId: inv.empresaId ?? null,
+      },
+    });
+
+    if (inv.role === 'CHOFER') {
+      await prisma.chofer.create({ data: { userId: user.id } });
+    }
+    if (inv.role === 'CHECADOR') {
+      await prisma.checador.create({ data: { userId: user.id } });
+    }
+
+    await prisma.invitacion.update({
+      where: { id: inv.id },
+      data: { usedAt: new Date(), userId: user.id },
+    });
+
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      process.env.JWT_SECRET!,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
+    res.status(201).json({
+      success: true,
+      data: {
+        token,
+        user: {
+          id: user.id,
+          telefono: user.telefono,
+          nombre: user.nombre,
+          role: user.role,
+          empresaId: user.empresaId,
+        },
+      },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message: 'Datos inválidos',
+        errors: error.errors,
+      });
+      return;
+    }
+    console.error('Error en register-with-invitation:', error);
     res.status(500).json({
       success: false,
       message: 'Error en el servidor',

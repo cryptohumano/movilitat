@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth.store';
 import { LoginPage } from '@/pages/Login';
+import RegistroPage from '@/pages/Registro';
+import { RegistroPasajeroPage } from '@/pages/RegistroPasajero';
 import { DashboardPage } from '@/pages/Dashboard';
 import { CheckInPage } from '@/pages/CheckIn';
 import { ProfilePage } from '@/pages/Profile';
@@ -10,10 +12,12 @@ import { UsuariosPage } from '@/pages/Usuarios';
 import { VehiculosPage } from '@/pages/Vehiculos';
 import { RegistrosRutaPage } from '@/pages/RegistrosRuta';
 import { MisRutasPage } from '@/pages/MisRutas';
-import { MapaActividadPage } from '@/pages/MapaActividad';
+import MapaActividadPage from '@/pages/MapaActividad';
 import { ParadasReferenciaPage } from '@/pages/ParadasReferencia';
 import { EstadoFlotillaPage } from '@/pages/EstadoFlotilla';
 import { RegistroActividadPage } from '@/pages/RegistroActividad';
+import { MisUnidadesPage } from '@/pages/MisUnidades';
+import { RutasPage } from '@/pages/Rutas';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -48,6 +52,8 @@ export default function App() {
             </PublicRoute>
           }
         />
+        <Route path="/registro" element={<RegistroPage />} />
+        <Route path="/registro-pasajero" element={<RegistroPasajeroPage />} />
 
         {/* Protected routes */}
         <Route
@@ -84,6 +90,14 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/mis-unidades"
+          element={
+            <ProtectedRoute>
+              <MisUnidadesPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Placeholder routes */}
         <Route
@@ -100,6 +114,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <VehiculosPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/rutas"
+          element={
+            <ProtectedRoute>
+              <RutasPage />
             </ProtectedRoute>
           }
         />

@@ -7,7 +7,11 @@ export type AuditAction =
   | 'CHECKIN_CREATE'
   | 'USER_CREATE'
   | 'USER_UPDATE'
-  | 'USER_DEACTIVATE';
+  | 'USER_DEACTIVATE'
+  | 'CHOFER_ACTIVAR_UNIDAD'
+  | 'CHOFER_TERMINAR_UNIDAD'
+  | 'CHOFER_REABRIR_UNIDAD'
+  | 'VEHICULO_REABRIR';
 
 interface AuditParams {
   userId?: string | null;

@@ -17,13 +17,15 @@ import choferRoutes from './routes/chofer.routes.js';
 import suscripcionesRutaRoutes from './routes/suscripciones-ruta.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import paradasReferenciaRoutes from './routes/paradas-referencia.routes.js';
+import paradasCercanasRoutes from './routes/paradas-cercanas.routes.js';
 import flotillasRoutes from './routes/flotillas.routes.js';
 import auditLogsRoutes from './routes/audit-logs.routes.js';
+import invitationsRoutes from './routes/invitations.routes.js';
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.BACKEND_PORT || 3001;
+const PORT = process.env.PORT || process.env.BACKEND_PORT || 3001;
 
 // Middlewares
 app.use(helmet());
@@ -63,8 +65,10 @@ app.use('/api/chofer', choferRoutes);
 app.use('/api/suscripciones-ruta', suscripcionesRutaRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/paradas-referencia', paradasReferenciaRoutes);
+app.use('/api/paradas-cercanas', paradasCercanasRoutes);
 app.use('/api/flotillas', flotillasRoutes);
 app.use('/api/audit-logs', auditLogsRoutes);
+app.use('/api/invitations', invitationsRoutes);
 
 // Error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

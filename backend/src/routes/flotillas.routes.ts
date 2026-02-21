@@ -147,11 +147,67 @@ router.get(
         }
       }
 
+      // Organización: total + lista de choferes y checadores (para ver quiénes son y gestionar)
+      const usuariosOrg = await prisma.user.findMany({
+        where: {
+          role: { in: [Role.CHOFER, Role.CHECADOR] },
+          activo: true,
+          ...(empresaIds.length > 0 ? { OR: [{ empresaId: { in: empresaIds } }, { empresaId: null }] } : {}),
+        },
+        select: {
+          id: true,
+          role: true,
+          empresaId: true,
+          nombre: true,
+          apellido: true,
+          telefono: true,
+          email: true,
+          activo: true,
+          empresa: { select: { id: true, nombreCorto: true, codigo: true } },
+        },
+      });
+      const totalChoferes = usuariosOrg.filter((u) => u.role === Role.CHOFER).length;
+      const totalChecadores = usuariosOrg.filter((u) => u.role === Role.CHECADOR).length;
+      const porEmpresaOrg: Record<string, { choferes: number; checadores: number }> = {};
+      for (const eid of empIds) {
+        porEmpresaOrg[eid] = {
+          choferes: usuariosOrg.filter((u) => u.role === Role.CHOFER && u.empresaId === eid).length,
+          checadores: usuariosOrg.filter((u) => u.role === Role.CHECADOR && u.empresaId === eid).length,
+        };
+      }
+      const listaChoferes = usuariosOrg
+        .filter((u) => u.role === Role.CHOFER)
+        .map((u) => ({
+          id: u.id,
+          nombre: u.nombre + (u.apellido ? ` ${u.apellido}` : ''),
+          telefono: u.telefono,
+          email: u.email,
+          empresaId: u.empresaId,
+          empresa: u.empresa ? { id: u.empresa.id, nombreCorto: u.empresa.nombreCorto ?? u.empresa.codigo } : null,
+        }));
+      const listaChecadores = usuariosOrg
+        .filter((u) => u.role === Role.CHECADOR)
+        .map((u) => ({
+          id: u.id,
+          nombre: u.nombre + (u.apellido ? ` ${u.apellido}` : ''),
+          telefono: u.telefono,
+          email: u.email,
+          empresaId: u.empresaId,
+          empresa: u.empresa ? { id: u.empresa.id, nombreCorto: u.empresa.nombreCorto ?? u.empresa.codigo } : null,
+        }));
+
       res.json({
         success: true,
         data: {
           empresas: Object.values(porEmpresa),
           derroteros: Object.values(porDerrotero),
+          organizacion: {
+            totalChoferes,
+            totalChecadores,
+            porEmpresa: porEmpresaOrg,
+            listaChoferes,
+            listaChecadores,
+          },
         },
       });
     } catch (e) {

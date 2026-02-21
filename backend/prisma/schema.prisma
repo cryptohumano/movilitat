@@ -63,6 +63,12 @@ enum TipoRegistroUnidad {
   DETERIORO  // Deterioro/falla (descripción)
 }
 
+// Sentido del recorrido: misma ruta física, orden de paradas invertido en vuelta
+enum Sentido {
+  IDA     // Orden de puntos: 1 → N (ej. Cuatro Caminos → Rosario)
+  VUELTA  // Mismo camino en sentido inverso: N → 1 (Rosario → Cuatro Caminos)
+}
+
 // ===========================================
 // USUARIOS Y AUTENTICACIÓN
 // ===========================================
@@ -96,6 +102,8 @@ model User {
   chofer        Chofer?
   checador      Checador?
   suscripcionesRuta SuscripcionRuta[]
+  invitacionesEnviadas Invitacion[]  @relation("InvitacionCreadaPor")
+  invitacionReclamada  Invitacion?   @relation("InvitacionReclamadaPor")
 
   // Auditoría
   createdAt     DateTime  @default(now())
@@ -105,6 +113,30 @@ model User {
   @@index([telefono])
   @@index([role])
   @@map("users")
+}
+
+// ===========================================
+// INVITACIONES (registro por enlace)
+// ===========================================
+// El admin genera un link; quien no está inscrito lo abre, se registra y obtiene el rol/empresa de la invitación.
+model Invitacion {
+  id           String    @id @default(cuid())
+  token        String    @unique
+  role         Role      // CHOFER, CHECADOR, ADMIN_EMPRESA
+  empresaId    String?
+  empresa      Empresa?  @relation(fields: [empresaId], references: [id])
+  email        String?   // Opcional, para pre-llenar o mostrar
+  expiresAt    DateTime
+  usedAt       DateTime?
+  userId       String?   @unique
+  user         User?     @relation("InvitacionReclamadaPor", fields: [userId], references: [id])
+  invitedById  String?
+  invitedBy    User?     @relation("InvitacionCreadaPor", fields: [invitedById], references: [id])
+  createdAt    DateTime  @default(now())
+
+  @@index([token])
+  @@index([expiresAt])
+  @@map("invitaciones")
 }
 
 // ===========================================
@@ -137,6 +169,7 @@ model Empresa {
   derroteros        Derrotero[]
   vehiculos         Vehiculo[]
   pagos             Pago[]
+  invitaciones      Invitacion[]
   
   // Auditoría
   createdAt         DateTime     @default(now())
@@ -211,6 +244,9 @@ model PuntoControl {
   derroteroId     String
   derrotero       Derrotero     @relation(fields: [derroteroId], references: [id])
   
+  // Orden de la parada en la ruta (1, 2, 3…) para ETA y secuencia
+  orden           Int           @default(0)
+  
   // Checador asignado actualmente
   checadorId      String?
   checador        Checador?     @relation(fields: [checadorId], references: [id])
@@ -228,6 +264,7 @@ model PuntoControl {
   updatedAt       DateTime      @updatedAt
 
   @@index([derroteroId])
+  @@index([derroteroId, orden])
   @@index([checadorId])
   @@map("puntos_control")
 }
@@ -275,15 +312,20 @@ model Vehiculo {
   derroteroId     String?
   derrotero       Derrotero?      @relation(fields: [derroteroId], references: [id])
   
-  // Chofer asignado actualmente (asignación de flota)
+  // Chofer activo: quien está manejando ahora (solo uno por unidad)
   choferId        String?
   chofer          Chofer?         @relation("ChoferAsignado", fields: [choferId], references: [id])
-  
+  // Lista de choferes asignados a esta unidad (pueden ser varios; solo uno activo a la vez)
+  choferesAsignados VehiculoChofer[]
+
   // Información del vehículo
   marca           String?
   modelo          String?
   anio            Int?
   capacidad       Int?            // Número de pasajeros
+  
+  // Si la unidad "cierra por hoy" (se lleva a guardar), no se puede activar hasta el día siguiente
+  encerradoHasta  DateTime?
   
   // Chofer que tiene esta unidad "activada" (la está manejando ahora)
   choferActivo    Chofer?         @relation("UnidadActiva")
@@ -323,12 +365,18 @@ model Chofer {
   tipoLicencia    String?      // A, B, C, D, E
   vigenciaLicencia DateTime?
   
-  // Vehículos asignados (pueden ser de distintas empresas/derroteros)
+  // Vehículos donde este chofer está asignado (puede haber varios; solo uno activo a la vez)
   vehiculos       Vehiculo[]      @relation("ChoferAsignado")
-  
+  asignacionesVehiculo VehiculoChofer[]
+
   // Unidad actualmente "activada" (la que está manejando ahora). Al terminar, se libera para otro chofer.
   vehiculoActivoId String?       @unique
   vehiculoActivo   Vehiculo?     @relation("UnidadActiva", fields: [vehiculoActivoId], references: [id])
+  // Hora en que inició la ruta con esta unidad (para cronómetro de viaje activo)
+  unidadActivaDesde DateTime?
+
+  // Sentido del recorrido actual (solo aplica cuando tiene unidad activa). Vuelta = mismo camino, orden inverso.
+  sentidoActual    Sentido?      @default(IDA)
   
   // Check-ins realizados
   checkIns        CheckIn[]
@@ -348,6 +396,21 @@ model Chofer {
   updatedAt       DateTime     @updatedAt
 
   @@map("choferes")
+}
+
+// Asignación chofer–vehículo: una unidad puede tener varios choferes; solo uno activo a la vez (Vehiculo.choferId)
+model VehiculoChofer {
+  id          String    @id @default(cuid())
+  vehiculoId  String
+  vehiculo    Vehiculo  @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+  choferId    String
+  chofer      Chofer    @relation(fields: [choferId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([vehiculoId, choferId])
+  @@index([vehiculoId])
+  @@index([choferId])
+  @@map("vehiculos_choferes")
 }
 
 // ===========================================

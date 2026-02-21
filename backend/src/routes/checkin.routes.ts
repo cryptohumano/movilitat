@@ -265,12 +265,28 @@ router.post(
     try {
       const { qrData, puntoControlId, latitud, longitud, lePago, estado } = req.body;
 
-      // Parsear datos del QR (formato: PLACA|CHOFER_ID)
-      const [placa, choferId] = qrData.split('|');
+      if (!qrData || typeof qrData !== 'string') {
+        res.status(400).json({ success: false, message: 'qrData es requerido' });
+        return;
+      }
+      if (!puntoControlId) {
+        res.status(400).json({ success: false, message: 'puntoControlId es requerido' });
+        return;
+      }
+
+      // Parsear datos del QR (formato: PLACA|CHOFER_ID o solo PLACA)
+      const parts = qrData.trim().split('|');
+      const placa = (parts[0] || '').trim().toUpperCase();
+      const choferId = parts[1]?.trim() || null;
+
+      if (!placa) {
+        res.status(400).json({ success: false, message: 'El QR no contiene una placa válida' });
+        return;
+      }
 
       // Buscar vehículo por placa
       const vehiculo = await prisma.vehiculo.findUnique({
-        where: { placa: placa.toUpperCase() },
+        where: { placa },
       });
 
       if (!vehiculo) {

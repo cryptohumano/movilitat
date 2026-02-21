@@ -9,13 +9,23 @@ import {
   User,
   Building2,
   Route,
+  Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { ModalDetalleUnidad } from '@/components/ModalDetalleUnidad';
+import { BottomNav } from '@/components/layout/BottomNav';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
+
+interface ChoferAsignado {
+  chofer: {
+    id: string;
+    user: { id: string; nombre: string; telefono: string };
+  };
+}
 
 interface VehiculoItem {
   id: string;
@@ -29,6 +39,12 @@ interface VehiculoItem {
     id: string;
     user: { id: string; nombre: string; telefono: string };
   } | null;
+  choferActivo?: {
+    id: string;
+    user: { id: string; nombre: string; telefono: string };
+  } | null;
+  choferesAsignados?: ChoferAsignado[];
+  encerradoHasta?: string | null;
 }
 
 interface DerroteroItem {
@@ -64,6 +80,14 @@ const ESTADOS = [
   { value: 'BAJA', label: 'Baja' },
 ];
 
+function isEncerradaHoy(v: { encerradoHasta?: string | null }) {
+  if (!v?.encerradoHasta) return false;
+  const hasta = new Date(v.encerradoHasta);
+  const inicioHoy = new Date();
+  inicioHoy.setHours(0, 0, 0, 0);
+  return hasta >= inicioHoy;
+}
+
 export function VehiculosPage() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
@@ -81,6 +105,11 @@ export function VehiculosPage() {
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroDerrotero, setFiltroDerrotero] = useState('');
   const [filtroEmpresa, setFiltroEmpresa] = useState('');
+  const [addingChoferId, setAddingChoferId] = useState<string | null>(null);
+  const [removingChoferId, setRemovingChoferId] = useState<string | null>(null);
+  const [detalleVehiculoId, setDetalleVehiculoId] = useState<string | null>(null);
+  const [addChoferVehiculoId, setAddChoferVehiculoId] = useState<string | null>(null);
+  const [addChoferSelectedId, setAddChoferSelectedId] = useState('');
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const canAccess = isSuperAdmin || user?.role === 'ADMIN_EMPRESA';
@@ -201,9 +230,13 @@ export function VehiculosPage() {
       setError('La placa es obligatoria');
       return;
     }
-    const empresaId = isSuperAdmin ? form.empresaId : undefined;
-    if (isSuperAdmin && !empresaId) {
+    const empresaId = isSuperAdmin ? form.empresaId : (user?.empresaId ?? '');
+    if (isSuperAdmin && !form.empresaId) {
       setError('Selecciona una empresa');
+      return;
+    }
+    if (!isSuperAdmin && !empresaId) {
+      setError('Tu usuario no tiene empresa asignada. Contacta al administrador.');
       return;
     }
     setSaving(true);
@@ -212,7 +245,7 @@ export function VehiculosPage() {
       const body: Record<string, unknown> = {
         placa: form.placa.trim().toUpperCase(),
         numeroEconomico: form.numeroEconomico.trim() || undefined,
-        tipo: form.tipo,
+        tipo: form.tipo || 'AUTOBUS',
         derroteroId: form.derroteroId || undefined,
         marca: form.marca.trim() || undefined,
         modelo: form.modelo.trim() || undefined,
@@ -257,6 +290,54 @@ export function VehiculosPage() {
       anio: '',
       capacidad: '',
     });
+  };
+
+  const handleAddChofer = async (vehiculoId: string, choferId: string) => {
+    if (!choferId) return;
+    setAddingChoferId(choferId);
+    setError('');
+    try {
+      const res = await api.post<{ data: { chofer: ChoferAsignado['chofer'] } }>(`/vehiculos/${vehiculoId}/choferes`, { choferId });
+      if (res.success && res.data?.chofer) {
+        setVehiculos((prev) =>
+          prev.map((ve) =>
+            ve.id === vehiculoId
+              ? {
+                  ...ve,
+                  choferesAsignados: [...(ve.choferesAsignados || []), { chofer: res.data!.chofer }],
+                }
+              : ve
+          )
+        );
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al asignar chofer');
+    } finally {
+      setAddingChoferId(null);
+    }
+  };
+
+  const handleRemoveChofer = async (vehiculoId: string, choferId: string) => {
+    setRemovingChoferId(choferId);
+    setError('');
+    try {
+      await api.delete(`/vehiculos/${vehiculoId}/choferes/${choferId}`);
+      setVehiculos((prev) =>
+        prev.map((ve) =>
+          ve.id === vehiculoId
+            ? {
+                ...ve,
+                choferesAsignados: (ve.choferesAsignados || []).filter((a) => a.chofer.id !== choferId),
+                chofer: ve.chofer?.id === choferId ? null : ve.chofer,
+              }
+            : ve
+        )
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al quitar chofer');
+    } finally {
+      setRemovingChoferId(null);
+    }
   };
 
   const handleUpdate = async (id: string, e: React.FormEvent) => {
@@ -306,7 +387,7 @@ export function VehiculosPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col pb-24">
+    <div className="min-h-screen bg-background flex flex-col pb-nav">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-lg border-b border-border pt-[env(safe-area-inset-top)]">
         <div className="flex items-center gap-3 px-4 h-14">
           <Button variant="ghost" size="icon-sm" onClick={() => navigate(-1)}>
@@ -316,7 +397,7 @@ export function VehiculosPage() {
         </div>
       </header>
 
-      <main className="flex-1 p-4 space-y-4">
+      <main className="flex-1 p-4 space-y-4 overflow-auto">
         {error && (
           <Card className="border-destructive bg-destructive/10">
             <CardContent className="p-3 text-sm text-destructive">{error}</CardContent>
@@ -492,7 +573,7 @@ export function VehiculosPage() {
                         ))}
                       </select>
                       <div>
-                        <label className="text-sm text-muted-foreground">Chofer asignado</label>
+                        <label className="text-sm font-medium">Chofer activo (quien maneja ahora)</label>
                         <select
                           value={editForm.choferId ?? ''}
                           onChange={(e) => setEditForm((f) => ({ ...f, choferId: e.target.value || null }))}
@@ -505,6 +586,67 @@ export function VehiculosPage() {
                               <option key={c.id} value={c.id}>{c.nombre} ({c.telefono})</option>
                             ))}
                         </select>
+                        <p className="text-xs text-muted-foreground mt-0.5">El chofer suele asignarse desde la app (Iniciar ruta). Usa esto solo como respaldo.</p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">Choferes de esta unidad</label>
+                        <ul className="mt-1 space-y-1">
+                          {(v.choferesAsignados ?? []).map((a) => (
+                            <li key={a.chofer.id} className="flex items-center justify-between gap-2 text-sm py-1">
+                              <span>
+                                {a.chofer.user.nombre} · {a.chofer.user.telefono}
+                                {((v.choferActivo ?? v.chofer)?.id === a.chofer.id) && (
+                                  <Badge variant="secondary" className="ml-1 text-xs">Activo</Badge>
+                                )}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive h-8 px-2"
+                                disabled={removingChoferId === a.chofer.id}
+                                onClick={() => handleRemoveChofer(v.id, a.chofer.id)}
+                              >
+                                {removingChoferId === a.chofer.id ? <Loader2 className="size-4 animate-spin" /> : 'Quitar'}
+                              </Button>
+                            </li>
+                          ))}
+                          {(!v.choferesAsignados || v.choferesAsignados.length === 0) && (
+                            <li className="text-sm text-muted-foreground">Ningún chofer asignado. Agrega uno abajo.</li>
+                          )}
+                        </ul>
+                        <div className="flex gap-2 mt-2 flex-wrap items-center">
+                          <select
+                            className="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[180px]"
+                            value={addChoferVehiculoId === v.id ? addChoferSelectedId : ''}
+                            onChange={(e) => {
+                              setAddChoferVehiculoId(v.id);
+                              setAddChoferSelectedId(e.target.value);
+                            }}
+                          >
+                            <option value="">Agregar chofer…</option>
+                            {choferes
+                              .filter((c) => !isSuperAdmin || !v.empresa?.id || c.empresaId === v.empresa.id)
+                              .filter((c) => !(v.choferesAsignados ?? []).some((a) => a.chofer.id === c.id))
+                              .map((c) => (
+                                <option key={c.id} value={c.id}>{c.nombre} ({c.telefono})</option>
+                              ))}
+                          </select>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!addChoferSelectedId || addChoferVehiculoId !== v.id || addingChoferId !== null}
+                            onClick={async () => {
+                              if (!addChoferSelectedId) return;
+                              await handleAddChofer(v.id, addChoferSelectedId);
+                              setAddChoferSelectedId('');
+                              setAddChoferVehiculoId(null);
+                            }}
+                          >
+                            {addingChoferId ? <Loader2 className="size-4 animate-spin" /> : 'Agregar'}
+                          </Button>
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <Button type="submit" size="sm" disabled={saving}>
@@ -530,10 +672,15 @@ export function VehiculosPage() {
                               {v.derrotero.nombre}
                             </p>
                           )}
-                          {v.chofer && (
+                          {(v.choferActivo ?? v.chofer) && (
                             <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
                               <User className="size-3" />
-                              {v.chofer.user.nombre} · {v.chofer.user.telefono}
+                              Chofer al volante: {(v.choferActivo ?? v.chofer)!.user.nombre} · {(v.choferActivo ?? v.chofer)!.user.telefono}
+                            </p>
+                          )}
+                          {(v.choferesAsignados?.length ?? 0) > 1 && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              También asignados: {v.choferesAsignados?.filter((a) => a.chofer.id !== (v.choferActivo ?? v.chofer)?.id).map((a) => a.chofer.user.nombre).join(', ')}
                             </p>
                           )}
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -541,11 +688,36 @@ export function VehiculosPage() {
                             <Badge variant={v.estado === 'ACTIVO' ? 'activo' : 'inactivo'}>
                               {ESTADOS.find((e) => e.value === v.estado)?.label || v.estado}
                             </Badge>
+                            {isEncerradaHoy(v) && (
+                              <Badge variant="outline" className="text-amber-700 border-amber-300">Encerrada hoy</Badge>
+                            )}
                           </div>
                         </div>
-                        <Button variant="ghost" size="icon-sm" onClick={() => startEdit(v)} title="Editar y asignar chofer">
-                          <Pencil className="size-4" />
-                        </Button>
+                        <div className="flex gap-1 flex-wrap">
+                          {isEncerradaHoy(v) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                try {
+                                  await api.put(`/vehiculos/${v.id}/reabrir`);
+                                  setVehiculos((prev) => prev.map((ve) => (ve.id === v.id ? { ...ve, encerradoHasta: null } : ve)));
+                                } catch (e) {
+                                  console.error(e);
+                                }
+                              }}
+                            >
+                              Reabrir
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" onClick={() => setDetalleVehiculoId(v.id)} title="Ver detalle e historial">
+                            <Eye className="size-4 mr-1" />
+                            Ver detalle
+                          </Button>
+                          <Button variant="ghost" size="icon-sm" onClick={() => startEdit(v)} title="Editar y asignar chofer">
+                            <Pencil className="size-4" />
+                          </Button>
+                        </div>
                       </div>
                     </>
                   )}
@@ -555,6 +727,11 @@ export function VehiculosPage() {
           </div>
         )}
       </main>
+      <ModalDetalleUnidad
+        vehiculoId={detalleVehiculoId}
+        onClose={() => setDetalleVehiculoId(null)}
+      />
+      <BottomNav />
     </div>
   );
 }

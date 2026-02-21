@@ -28,6 +28,7 @@ interface DerroteroItem {
 
 interface EstadoRuta {
   unidadesEnRuta: number;
+  unidadesActivasAhora: number;
   conActividadHoy: number;
   ultimaActividadAt: string | null;
 }
@@ -144,7 +145,7 @@ export function MisRutasPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background pb-nav">
       <Header />
       <main className="p-4 space-y-6">
         <div>
@@ -154,12 +155,12 @@ export function MisRutasPage() {
           </p>
         </div>
 
-        {/* Mis suscripciones */}
+        {/* Rutas que sigo */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Route className="size-4" />
-              Rutas suscritas
+              Rutas que sigo
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -169,7 +170,7 @@ export function MisRutasPage() {
               </div>
             ) : suscripciones.length === 0 ? (
               <p className="text-muted-foreground text-sm py-4">
-                Aún no te has suscrito a ninguna ruta. Elige una abajo.
+                Aún no sigues ninguna ruta. Elige una abajo.
               </p>
             ) : (
               <ul className="space-y-3">
@@ -199,9 +200,15 @@ export function MisRutasPage() {
                               <Bus className="size-3" />
                               {s.estadoRuta.unidadesEnRuta} unidad{s.estadoRuta.unidadesEnRuta !== 1 ? 'es' : ''} en la ruta
                             </span>
+                            {(s.estadoRuta.unidadesActivasAhora ?? 0) > 0 && (
+                              <span className="flex items-center gap-1 text-primary font-medium">
+                                <Activity className="size-3" />
+                                {s.estadoRuta.unidadesActivasAhora} activa{s.estadoRuta.unidadesActivasAhora !== 1 ? 's' : ''} ahora
+                              </span>
+                            )}
                             <span className="flex items-center gap-1">
                               <Activity className="size-3" />
-                              {s.estadoRuta.conActividadHoy} en operación hoy
+                              {s.estadoRuta.conActividadHoy} con paso hoy
                             </span>
                             {s.estadoRuta.ultimaActividadAt && (
                               <span>
@@ -221,7 +228,7 @@ export function MisRutasPage() {
                       {unsubscribingId === s.derrotero.id ? (
                         <Loader2 className="size-4 animate-spin" />
                       ) : (
-                        'Desuscribir'
+                        'Dejar de seguir'
                       )}
                     </Button>
                   </li>

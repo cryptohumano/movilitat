@@ -10,7 +10,7 @@ const router = Router();
 async function puedeAccederVehiculo(req: AuthRequest, vehiculoId: string): Promise<boolean> {
   const vehiculo = await prisma.vehiculo.findUnique({
     where: { id: vehiculoId },
-    select: { id: true, choferId: true, empresaId: true },
+    select: { id: true, choferId: true, empresaId: true, choferesAsignados: { select: { choferId: true } } },
   });
   if (!vehiculo) return false;
   if (req.user!.role === Role.SUPER_ADMIN) return true;
@@ -19,7 +19,8 @@ async function puedeAccederVehiculo(req: AuthRequest, vehiculoId: string): Promi
     where: { userId: req.user!.id },
     select: { id: true },
   });
-  return chofer?.id === vehiculo.choferId;
+  if (!chofer) return false;
+  return vehiculo.choferId === chofer.id || (vehiculo.choferesAsignados?.some((a) => a.choferId === chofer.id) ?? false);
 }
 
 // GET /api/registros-unidad - Listar por vehiculoId (obligatorio para chofer/admin)

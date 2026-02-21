@@ -7,24 +7,25 @@ import { Card, CardContent } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 
-interface VehiculoItem {
-  id: string;
-  placa: string;
-  tipo: string;
-  derrotero?: { nombre: string };
-}
-
-interface DashboardChofer {
-  tipo: 'CHOFER';
-  chofer: { id: string; vehiculos: VehiculoItem[] };
+interface UnidadActivaResponse {
+  choferId: string;
+  tieneUnidadActiva: boolean;
+  unidadActiva: {
+    id: string;
+    placa: string;
+    numeroEconomico?: string;
+    tipo: string;
+    derrotero?: { numero: number; nombre: string };
+    empresa?: { nombreCorto: string };
+  } | null;
+  unidadesAsignadas: unknown[];
 }
 
 export function MiQrPage() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const [vehiculos, setVehiculos] = useState<VehiculoItem[]>([]);
   const [choferId, setChoferId] = useState<string | null>(null);
-  const [selectedPlaca, setSelectedPlaca] = useState<string | null>(null);
+  const [unidadActiva, setUnidadActiva] = useState<UnidadActivaResponse['unidadActiva']>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,15 +33,13 @@ export function MiQrPage() {
       setLoading(false);
       return;
     }
-    const id = user.choferId ?? null;
-    setChoferId(id);
-    api.get<DashboardChofer>('/dashboard')
+    api
+      .get<{ data: UnidadActivaResponse }>('/chofer/unidad-activa')
       .then((res) => {
         if (!res.success || !res.data) return;
-        const data = res.data as DashboardChofer;
-        const list = data.chofer?.vehiculos ?? [];
-        setVehiculos(list);
-        if (list.length > 0 && !selectedPlaca) setSelectedPlaca(list[0].placa);
+        const data = res.data;
+        setChoferId(data.choferId ?? user?.choferId ?? null);
+        setUnidadActiva(data.tieneUnidadActiva ? data.unidadActiva : null);
       })
       .finally(() => setLoading(false));
   }, [user?.role, user?.choferId]);
@@ -63,7 +62,9 @@ export function MiQrPage() {
     );
   }
 
-  const qrPayload = choferId && selectedPlaca ? `${selectedPlaca}|${choferId}` : null;
+  const placaUnidadActiva = unidadActiva?.placa ?? null;
+  const choferIdFinal = choferId ?? user?.choferId ?? null;
+  const qrPayload = choferIdFinal && placaUnidadActiva ? `${placaUnidadActiva}|${choferIdFinal}` : null;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -72,56 +73,39 @@ export function MiQrPage() {
           <Button variant="ghost" size="icon-sm" onClick={() => navigate(-1)}>
             <ArrowLeft className="size-5" />
           </Button>
-          <h1 className="font-semibold text-lg">Mi QR</h1>
+          <h1 className="font-semibold text-lg">QR unidad en ruta</h1>
         </div>
       </header>
-
       <main className="flex-1 p-6">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 gap-4">
             <Loader2 className="size-10 animate-spin text-muted-foreground" />
             <p className="text-muted-foreground">Cargando...</p>
           </div>
-        ) : !choferId ? (
+        ) : !choferIdFinal ? (
           <Card className="p-6">
             <CardContent className="p-0 text-center">
               <p className="text-muted-foreground">No se pudo cargar tu perfil de chofer.</p>
             </CardContent>
           </Card>
-        ) : vehiculos.length === 0 ? (
+        ) : !unidadActiva ? (
           <Card className="p-6">
-            <CardContent className="p-0 text-center">
-              <Bus className="size-12 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground">No tienes vehículos asignados.</p>
-              <p className="text-sm text-muted-foreground mt-2">Contacta a tu empresa para que te asigne un vehículo.</p>
+            <CardContent className="p-0 text-center space-y-4">
+              <Bus className="size-12 text-muted-foreground mx-auto block" />
+              <p className="text-muted-foreground font-medium">No tienes una unidad en ruta</p>
+              <p className="text-sm text-muted-foreground">
+                El QR corresponde siempre a la unidad que estás manejando. Inicia una ruta desde Inicio para poder mostrar tu QR al checador.
+              </p>
+              <Button onClick={() => navigate('/')}>
+                Ir a Inicio
+              </Button>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-6">
             <p className="text-muted-foreground text-center text-sm">
-              Muestra este código QR al checador en el punto de control para registrar tu check-in.
+              Muestra este código QR al checador en el punto de control. Corresponde a la unidad con la que iniciaste ruta.
             </p>
-            {vehiculos.length > 1 && (
-              <p className="text-muted-foreground text-center text-xs">
-                Si cambias de unidad (turno), selecciona la placa que vas manejando.
-              </p>
-            )}
-
-            {vehiculos.length > 1 && (
-              <div className="flex flex-wrap gap-2 justify-center">
-                {vehiculos.map((v) => (
-                  <Button
-                    key={v.id}
-                    variant={selectedPlaca === v.placa ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setSelectedPlaca(v.placa)}
-                  >
-                    <Bus className="size-4" />
-                    {v.placa}
-                  </Button>
-                ))}
-              </div>
-            )}
 
             {qrPayload && (
               <Card className="overflow-hidden">
@@ -129,10 +113,10 @@ export function MiQrPage() {
                   <div className="rounded-2xl bg-white p-4 shadow-inner">
                     <QRCodeSVG value={qrPayload} size={240} level="M" />
                   </div>
-                  <p className="font-mono font-semibold text-lg mt-4">{selectedPlaca}</p>
-                  {vehiculos.find((v) => v.placa === selectedPlaca)?.derrotero && (
+                  <p className="font-mono font-semibold text-lg mt-4">{placaUnidadActiva}</p>
+                  {unidadActiva.derrotero && (
                     <p className="text-sm text-muted-foreground">
-                      {vehiculos.find((v) => v.placa === selectedPlaca)?.derrotero?.nombre}
+                      Ruta {unidadActiva.derrotero.numero} · {unidadActiva.derrotero.nombre}
                     </p>
                   )}
                 </CardContent>
@@ -141,7 +125,7 @@ export function MiQrPage() {
 
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <QrCode className="size-4" />
-              <span>Formato: placa | chofer</span>
+              <span>Unidad actual (no se puede cambiar; solo una activa por chofer)</span>
             </div>
           </div>
         )}
