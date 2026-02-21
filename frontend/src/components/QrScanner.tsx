@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 
+const CONTAINER_ID = 'qr-reader-checador';
+
 interface QrScannerProps {
   onScan: (qrData: string) => void;
   onError?: (err: string) => void;
@@ -9,6 +11,7 @@ interface QrScannerProps {
 
 export function QrScanner({ onScan, onError, className = '' }: QrScannerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const onScanRef = useRef(onScan);
   onScanRef.current = onScan;
@@ -17,10 +20,27 @@ export function QrScanner({ onScan, onError, className = '' }: QrScannerProps) {
     const container = containerRef.current;
     if (!container) return;
 
-    const id = 'qr-reader-' + Math.random().toString(36).slice(2);
-    container.id = id;
+    setCameraError(null);
+    container.id = CONTAINER_ID;
 
-    const scanner = new Html5Qrcode(id);
+    // Evitar doble inicialización (p. ej. React Strict Mode monta dos veces)
+    if (scannerRef.current?.getState() === 2) {
+      return;
+    }
+    if (scannerRef.current) {
+      try {
+        if (scannerRef.current.isScanning) scannerRef.current.stop().catch(() => {});
+        scannerRef.current.clear();
+      } catch {
+        // ignorar si ya estaba limpio
+      }
+      scannerRef.current = null;
+    }
+    // Limpiar cualquier video anterior que la librería haya dejado (evita doble cámara)
+    container.innerHTML = '';
+
+    const scanner = new Html5Qrcode(CONTAINER_ID);
+    scannerRef.current = scanner;
 
     scanner
       .start(
@@ -35,11 +55,33 @@ export function QrScanner({ onScan, onError, className = '' }: QrScannerProps) {
         const msg = err?.message || 'No se pudo acceder a la cámara';
         setCameraError(msg);
         onError?.(msg);
+        scannerRef.current = null;
       });
 
     return () => {
-      if (scanner.isScanning) {
-        scanner.stop().catch(() => {});
+      const scan = scannerRef.current;
+      scannerRef.current = null;
+      if (scan?.isScanning) {
+        scan
+          .stop()
+          .then(() => {
+            try {
+              scan.clear();
+            } catch {
+              // ignorar
+            }
+            if (containerRef.current) containerRef.current.innerHTML = '';
+          })
+          .catch(() => {
+            if (containerRef.current) containerRef.current.innerHTML = '';
+          });
+      } else {
+        try {
+          if (scan) scan.clear();
+        } catch {
+          // ignorar
+        }
+        if (containerRef.current) containerRef.current.innerHTML = '';
       }
     };
   }, [onError]);

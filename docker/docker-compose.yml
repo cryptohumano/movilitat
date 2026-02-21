@@ -1,4 +1,6 @@
-version: '3.8'
+# Movilitat - Docker Compose
+# Ejecutar con: docker compose -f docker/docker-compose.yml up -d
+# (Compose V2, sin guión: "docker compose")
 
 services:
   # ===========================================
@@ -45,6 +47,25 @@ services:
       - movilitat-network
 
   # ===========================================
+  # MinIO (Storage S3-compatible)
+  # ===========================================
+  minio:
+    image: minio/minio:latest
+    container_name: movilitat-minio
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-movilitat_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-movilitat_minio_secret_2026}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    networks:
+      - movilitat-network
+
+  # ===========================================
   # Backend API
   # ===========================================
   backend:
@@ -61,6 +82,10 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-movilitat_redis_2026}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-movilitat_minio}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-movilitat_minio_secret_2026}
+      MINIO_BUCKET: ${MINIO_BUCKET:-movilitat-uploads}
     ports:
       - "${BACKEND_PORT:-3001}:3001"
     depends_on:
@@ -90,6 +115,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
 
 networks:
   movilitat-network:

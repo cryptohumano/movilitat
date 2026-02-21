@@ -205,16 +205,29 @@ body {
   }
 }
 
-/* Bottom Navigation */
+/* Altura de la barra inferior (nav) para reservar espacio al contenido */
+@theme {
+  --nav-bottom-height: calc(4rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Contenedor de página con barra inferior: evita que el contenido quede tapado */
+@utility pb-nav {
+  padding-bottom: var(--nav-bottom-height);
+}
+
+/* Bottom Navigation - siempre visible en móvil, responsive */
 @utility bottom-nav {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
+  z-index: 50;
   background-color: oklch(0.205 0 0 / 95%);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--color-border);
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  min-height: var(--nav-bottom-height);
 }
 
 @utility bottom-nav-item {

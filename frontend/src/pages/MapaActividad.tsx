@@ -182,7 +182,7 @@ export function MapaActividadPage() {
   const maxDia = data?.porDia?.length ? Math.max(...data.porDia) : 0;
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background pb-nav">
       <Header />
       <main className="p-4 space-y-6">
         <div>
@@ -333,3 +333,5 @@ export function MapaActividadPage() {
     </div>
   );
 }
+
+export default MapaActividadPage;

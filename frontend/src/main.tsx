@@ -13,12 +13,17 @@ const queryClient = new QueryClient({
   },
 });
 
-// Register service worker for PWA (solo en producción; en dev Vite no sirve sw.js)
+// PWA: registrar SW solo en producción. En dev desregistrar cualquier SW previo
+// para que /api/* vaya al proxy y no aparezcan avisos de Workbox.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch((error) => {
       console.warn('SW registration failed:', error);
     });
+  });
+} else if (import.meta.env.DEV && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    registrations.forEach((r) => r.unregister());
   });
 }
 
