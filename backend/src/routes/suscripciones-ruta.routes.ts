@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware.js';
 import { Role } from '@prisma/client';
+import { asStr } from '../lib/req.js';
 
 const router = Router();
 
@@ -172,7 +173,7 @@ router.delete(
   authorize(Role.PASAJERO, Role.SUPER_ADMIN),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { derroteroId } = req.params;
+      const derroteroId = asStr(req.params.derroteroId);
       await prisma.suscripcionRuta.deleteMany({
         where: {
           userId: req.user!.id,

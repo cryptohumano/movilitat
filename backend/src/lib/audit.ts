@@ -1,4 +1,5 @@
 import type { Request } from 'express';
+import type { Prisma } from '@prisma/client';
 import prisma from './prisma.js';
 
 export type AuditAction =
@@ -48,7 +49,7 @@ export async function writeAudit(params: AuditParams): Promise<void> {
         accion: params.accion,
         recurso: params.recurso ?? undefined,
         recursoId: params.recursoId ?? undefined,
-        detalles: params.detalles ?? undefined,
+        detalles: (params.detalles ?? undefined) as Prisma.InputJsonValue | undefined,
         ip: params.req ? getIp(params.req) ?? undefined : undefined,
         userAgent: params.req?.headers['user-agent'] ?? undefined,
       },

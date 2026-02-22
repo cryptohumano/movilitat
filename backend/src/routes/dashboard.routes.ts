@@ -5,6 +5,12 @@ import { Role } from '@prisma/client';
 
 const router = Router();
 
+function toDecimalNum(v: unknown): number {
+  if (v == null) return 0;
+  const x = v as { toNumber?: () => number };
+  return typeof x.toNumber === 'function' ? x.toNumber() : Number(v) || 0;
+}
+
 // GET /api/dashboard - Dashboard según rol
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
@@ -467,9 +473,9 @@ async function getDashboardChofer(userId: string, hoy: Date, inicioMes: Date) {
     actividad: {
       checkInsHoy,
       checkInsMes,
-      gastoMes: gastoMes._sum.monto?.toNumber() ?? 0,
-      ingresosMesBitacora: registrosRutaMes._sum.ingresos?.toNumber() ?? 0,
-      gastosMesBitacora: registrosRutaMes._sum.gastos?.toNumber() ?? 0,
+      gastoMes: toDecimalNum(gastoMes._sum?.monto) ?? 0,
+      ingresosMesBitacora: toDecimalNum(registrosRutaMes._sum?.ingresos) ?? 0,
+      gastosMesBitacora: toDecimalNum(registrosRutaMes._sum?.gastos) ?? 0,
       horasTrabajadasMes: {
         minutos: Math.round(minutosTrabajadosMes),
         horas: Math.round((minutosTrabajadosMes / 60) * 10) / 10,

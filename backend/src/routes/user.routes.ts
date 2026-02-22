@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware.js';
 import { Role } from '@prisma/client';
+import { asStr } from '../lib/req.js';
 
 const router = Router();
 
@@ -180,7 +181,7 @@ router.put(
   authorize(Role.SUPER_ADMIN, Role.ADMIN_EMPRESA),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id } = req.params;
+      const id = asStr(req.params.id);
       const { nombre, apellido, email, activo, empresaId } = req.body;
 
       const user = await prisma.user.findUnique({ where: { id } });
@@ -209,7 +210,7 @@ router.put(
           apellido,
           email,
           activo,
-          ...(req.user!.role === Role.SUPER_ADMIN && { empresaId }),
+          ...(req.user!.role === Role.SUPER_ADMIN && empresaId !== undefined && { empresaId: asStr(empresaId) }),
         },
         select: {
           id: true,
@@ -244,7 +245,7 @@ router.put(
   authorize(Role.SUPER_ADMIN),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id } = req.params;
+      const id = asStr(req.params.id);
       const { newPassword } = req.body;
 
       const hashedPassword = await bcrypt.hash(newPassword, 10);

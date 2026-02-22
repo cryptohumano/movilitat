@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware.js';
 import { writeAudit } from '../lib/audit.js';
+import { asStr, asStrOrUndef } from '../lib/req.js';
 import { Role } from '@prisma/client';
 
 const router = Router();
@@ -390,8 +391,8 @@ router.put(
   authenticate,
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id } = req.params;
-      const { metodoPago } = req.body;
+      const id = asStr(req.params.id);
+      const metodoPago = asStrOrUndef(req.body.metodoPago);
 
       const checkIn = await prisma.checkIn.findUnique({
         where: { id },
@@ -421,16 +422,18 @@ router.put(
 
       const updated = await prisma.checkIn.update({
         where: { id },
-        data: { estado: 'PAGADO' },
+        data: { estado: 'PAGADO' as const },
       });
 
       // Actualizar ingreso del checador
-      await prisma.checador.update({
-        where: { id: checkIn.checadorId },
-        data: {
-          ingresoMes: { increment: checkIn.monto.toNumber() }, // Monto cobrado en mano ($15 por ruta)
-        },
-      });
+      if (checkIn.checadorId) {
+        await prisma.checador.update({
+          where: { id: checkIn.checadorId },
+          data: {
+            ingresoMes: { increment: checkIn.monto.toNumber() }, // Monto cobrado en mano ($15 por ruta)
+          },
+        });
+      }
 
       res.json({
         success: true,

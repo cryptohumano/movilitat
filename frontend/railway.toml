@@ -1,0 +1,11 @@
+# Railway – Frontend (monorepo: ejecutar desde raíz del repo)
+# En Railway: no uses Root Directory, o déjalo vacío para que el build use el monorepo.
+# Variable de entorno en Railway: VITE_API_URL = https://TU-BACKEND.up.railway.app/api
+
+[build]
+buildCommand = "yarn install && yarn workspace frontend run build"
+
+[deploy]
+startCommand = "yarn start:frontend"
+healthcheckPath = "/"
+healthcheckTimeout = 30

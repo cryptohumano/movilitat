@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware.js';
 import { Role } from '@prisma/client';
+import { asStr } from '../lib/req.js';
 
 const router = Router();
 
@@ -18,10 +19,11 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     }
 
     if (search) {
+      const s = asStr(search);
       where.OR = [
-        { nombre: { contains: search as string, mode: 'insensitive' } },
-        { nombreCorto: { contains: search as string, mode: 'insensitive' } },
-        { codigo: { contains: search as string, mode: 'insensitive' } },
+        { nombre: { contains: s, mode: 'insensitive' } },
+        { nombreCorto: { contains: s, mode: 'insensitive' } },
+        { codigo: { contains: s, mode: 'insensitive' } },
       ];
     }
 
@@ -59,7 +61,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 // GET /api/empresas/:id - Obtener empresa por ID
 router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asStr(req.params.id);
 
     // Verificar permisos si es admin de empresa
     if (req.user!.role === Role.ADMIN_EMPRESA && req.user!.empresaId !== id) {
@@ -168,7 +170,7 @@ router.put(
   authorize(Role.SUPER_ADMIN, Role.ADMIN_EMPRESA),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id } = req.params;
+      const id = asStr(req.params.id);
 
       // Verificar permisos si es admin de empresa
       if (req.user!.role === Role.ADMIN_EMPRESA && req.user!.empresaId !== id) {
@@ -216,7 +218,7 @@ router.get(
   authenticate,
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id } = req.params;
+      const id = asStr(req.params.id);
 
       // Verificar permisos
       if (req.user!.role === Role.ADMIN_EMPRESA && req.user!.empresaId !== id) {
@@ -264,14 +266,15 @@ router.get(
         _sum: { monto: true },
       });
 
+      const emp = empresa as typeof empresa & { derroteros: unknown[]; vehiculos: { estado: string }[] };
       res.json({
         success: true,
         data: {
-          totalDerroteros: empresa.derroteros.length,
-          totalVehiculos: empresa.vehiculos.length,
-          vehiculosActivos: empresa.vehiculos.filter(v => v.estado === 'ACTIVO').length,
+          totalDerroteros: emp.derroteros.length,
+          totalVehiculos: emp.vehiculos.length,
+          vehiculosActivos: emp.vehiculos.filter(v => v.estado === 'ACTIVO').length,
           checkInsDelMes,
-          ingresosMes: ingresosMes._sum.monto?.toNumber() ?? 0,
+          ingresosMes: ingresosMes._sum?.monto?.toNumber() ?? 0,
         },
       });
     } catch (error) {

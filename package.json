@@ -22,7 +22,10 @@
     "prisma:generate": "yarn workspace backend prisma:generate",
     "prisma:migrate": "yarn workspace backend prisma:migrate",
     "prisma:seed": "yarn workspace backend prisma:seed",
-    "prisma:studio": "yarn workspace backend prisma:studio"
+    "prisma:studio": "yarn workspace backend prisma:studio",
+    "start": "yarn start:backend",
+    "start:backend": "yarn workspace backend run prisma:migrate:deploy && yarn workspace backend run start",
+    "start:frontend": "yarn workspace frontend run start"
   },
   "author": "Edgar",
   "license": "MIT"

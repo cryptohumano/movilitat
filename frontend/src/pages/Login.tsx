@@ -150,14 +150,6 @@ export function LoginPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Demo credentials */}
-      <div className="mt-8 text-center text-sm text-muted-foreground animate-fade-in">
-        <p className="font-medium mb-2">Credenciales de prueba:</p>
-        <p>Pasajero: 5550000001 / admin123</p>
-        <p>Checador: 5551111111 / admin123</p>
-        <p>Chofer: 5552222222 / admin123</p>
-      </div>
     </div>
   );
 }

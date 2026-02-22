@@ -29,10 +29,11 @@ const PORT = process.env.PORT || process.env.BACKEND_PORT || 3001;
 
 // Middlewares
 app.use(helmet());
+const corsOrigins = process.env.NODE_ENV === 'production' && process.env.DOMAIN
+  ? process.env.DOMAIN.split(',').map((d) => `https://${d.trim()}`).filter(Boolean)
+  : ['http://localhost:3000', 'http://localhost:3001'];
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? [`https://${process.env.DOMAIN}`]
-    : ['http://localhost:3000', 'http://localhost:3001'],
+  origin: corsOrigins.length > 0 ? corsOrigins : (process.env.NODE_ENV === 'production' ? [] : corsOrigins),
   credentials: true,
 }));
 app.use(morgan('dev'));

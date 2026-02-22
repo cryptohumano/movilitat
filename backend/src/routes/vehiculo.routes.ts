@@ -3,6 +3,7 @@ import prisma from '../lib/prisma.js';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware.js';
 import { Role, Sentido } from '@prisma/client';
 import { writeAudit } from '../lib/audit.js';
+import { asStr, asStrOrUndef } from '../lib/req.js';
 
 const router = Router();
 
@@ -128,9 +129,10 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 // GET /api/vehiculos/placa/:placa - Buscar por placa (para check-in) — debe ir antes de /:id
 router.get('/placa/:placa', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { placa } = req.params;
+    const placaParam = req.params.placa;
+    const placaStr = (Array.isArray(placaParam) ? placaParam[0] ?? '' : placaParam) ?? '';
     const vehiculo = await prisma.vehiculo.findUnique({
-      where: { placa: placa.toUpperCase() },
+      where: { placa: placaStr.toUpperCase() },
       include: {
         empresa: { select: { id: true, codigo: true, nombreCorto: true } },
         derrotero: { select: { id: true, numero: true, nombre: true } },
@@ -155,7 +157,7 @@ router.get('/placa/:placa', authenticate, async (req: AuthRequest, res: Response
 // GET /api/vehiculos/:id/detalle - Detalle con historial y horas trabajadas (para modal)
 router.get('/:id/detalle', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asStr(req.params.id);
 
     const vehiculo = await prisma.vehiculo.findUnique({
       where: { id },
@@ -273,8 +275,8 @@ router.post(
   authorize(Role.SUPER_ADMIN, Role.ADMIN_EMPRESA),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id: vehiculoId } = req.params;
-      const { choferId } = req.body;
+      const vehiculoId = asStr(req.params.id);
+      const choferId = asStrOrUndef(req.body.choferId);
 
       const vehiculo = await prisma.vehiculo.findUnique({ where: { id: vehiculoId } });
       if (!vehiculo) {
@@ -322,7 +324,8 @@ router.delete(
   authorize(Role.SUPER_ADMIN, Role.ADMIN_EMPRESA),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id: vehiculoId, choferId } = req.params;
+      const vehiculoId = asStr(req.params.id);
+      const choferId = asStr(req.params.choferId);
 
       const vehiculo = await prisma.vehiculo.findUnique({ where: { id: vehiculoId } });
       if (!vehiculo) {
@@ -354,7 +357,7 @@ router.delete(
 // GET /api/vehiculos/:id
 router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asStr(req.params.id);
 
     const vehiculo = await prisma.vehiculo.findUnique({
       where: { id },
@@ -450,9 +453,15 @@ router.post(
         return;
       }
 
+      const placaNorm = typeof placa === 'string' ? placa.trim().toUpperCase() : String(placa ?? '').trim().toUpperCase();
+      if (!placaNorm) {
+        res.status(400).json({ success: false, message: 'Placa requerida' });
+        return;
+      }
+
       // Verificar que la placa no exista
       const existing = await prisma.vehiculo.findUnique({
-        where: { placa: placa.toUpperCase() },
+        where: { placa: placaNorm },
       });
 
       if (existing) {
@@ -502,7 +511,7 @@ router.put(
   authorize(Role.SUPER_ADMIN, Role.ADMIN_EMPRESA),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id } = req.params;
+      const id = asStr(req.params.id);
       const vehiculo = await prisma.vehiculo.findUnique({ where: { id } });
       if (!vehiculo) {
         return res.status(404).json({ success: false, message: 'Vehículo no encontrado' });
@@ -542,8 +551,16 @@ router.put(
   authorize(Role.SUPER_ADMIN, Role.ADMIN_EMPRESA),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id } = req.params;
-      const { numeroEconomico, tipo, estado, derroteroId, choferId, marca, modelo, anio, capacidad } = req.body;
+      const id = asStr(req.params.id);
+      const numeroEconomico = asStrOrUndef(req.body.numeroEconomico);
+      const tipo = req.body.tipo;
+      const estado = req.body.estado;
+      const derroteroId = asStrOrUndef(req.body.derroteroId);
+      const choferId = req.body.choferId;
+      const marca = asStrOrUndef(req.body.marca);
+      const modelo = asStrOrUndef(req.body.modelo);
+      const anio = req.body.anio;
+      const capacidad = req.body.capacidad;
 
       const vehiculo = await prisma.vehiculo.findUnique({ where: { id } });
 
@@ -564,7 +581,7 @@ router.put(
         return;
       }
 
-      const choferIdVal = typeof choferId === 'string' && choferId.trim() ? choferId.trim() : null;
+      const choferIdVal = asStrOrUndef(choferId)?.trim() || null;
 
       if (choferIdVal) {
         await prisma.vehiculoChofer.upsert({

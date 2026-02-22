@@ -264,6 +264,61 @@ En ambos casos: **no hay intercambio de efectivo en la operación**; el flujo es
 ### B2B (suscripción)
 - Empresa: $500-1,000/mes por derrotero → paga a la plataforma. En el punto: $15 chofer → checador en mano; la app registra y confirma el pago.
 
+## 🚂 Despliegue en Railway
+
+Sí, puedes desplegar el stack en **Railway** usando los Dockerfiles. Railway no ejecuta el `docker-compose` completo; se crean **servicios separados** y se usan los plugins de Postgres y Redis de Railway.
+
+### 1. Crear proyecto en Railway
+
+- Entra en [railway.app](https://railway.app), crea un proyecto nuevo y conecta el repositorio de este código.
+
+### 2. Base de datos y Redis
+
+- **PostgreSQL:** en el proyecto, “Add Plugin” → **PostgreSQL**. Railway inyecta `DATABASE_URL` (y `PGHOST`, `PGPORT`, etc.).
+- **Redis:** “Add Plugin” → **Redis**. Railway inyecta `REDIS_URL` (el backend ya la usa; también acepta `REDISHOST`, `REDISPORT`, `REDISPASSWORD`).
+
+### 3. Desplegar el Backend
+
+- **New** → **GitHub Repo** (o el mismo repo) → elige este repositorio.
+- **Settings** del servicio:
+  - **Root Directory:** `backend`
+  - **Dockerfile Path:** `Dockerfile` (o `backend/Dockerfile` si el root del deploy es la raíz del repo).
+- **Variables:** Railway ya puede enlazar `DATABASE_URL` y `REDIS_URL` desde los plugins (referencias tipo `${{Postgres.DATABASE_URL}}` y `${{Redis.REDIS_URL}}`). Añade:
+  - `JWT_SECRET` – un secreto fuerte (ej. generado aleatorio).
+  - `JWT_EXPIRES_IN` – opcional, ej. `7d`.
+- **Deploy:** Railway construye la imagen con el Dockerfile del backend y asigna un dominio público (ej. `xxx.railway.app`). El backend usa `PORT` que Railway inyecta automáticamente.
+
+Anota la URL pública del backend (ej. `https://movilitat-backend.railway.app`).
+
+### 4. Desplegar el Frontend
+
+- **New** → mismo repositorio otra vez (otro servicio).
+- **Settings:**
+  - **Root Directory:** dejar la **raíz del monorepo** (el Dockerfile del frontend espera el contexto en la raíz).
+  - **Dockerfile Path:** `frontend/Dockerfile`
+- **Variables (build time):**
+  - `VITE_API_URL` = URL del API del backend + `/api`, ej. `https://movilitat-backend.railway.app/api`
+- **Deploy:** se construye la imagen, Nginx sirve el build. Asigna dominio (ej. `https://movilitat-frontend.railway.app`).
+
+### 5. Resumen
+
+| Servicio  | Origen        | Dockerfile          | Variables clave                                      |
+|-----------|---------------|---------------------|------------------------------------------------------|
+| Postgres  | Plugin Railway| —                   | `DATABASE_URL` (inyectada)                           |
+| Redis     | Plugin Railway| —                   | `REDIS_URL` (inyectada)                              |
+| Backend   | Repo          | `backend/Dockerfile`| `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `PORT`    |
+| Frontend  | Repo          | `frontend/Dockerfile`| `VITE_API_URL` = `https://<backend-url>/api` (build) |
+
+Tras el primer deploy del backend, ejecuta las migraciones y el seed en tu máquina apuntando a la `DATABASE_URL` de Railway, o desde un “one-off” job en Railway si lo configuras:
+
+```bash
+# Con DATABASE_URL de Railway en tu .env
+yarn prisma:migrate:deploy
+yarn prisma:seed
+```
+
+Con esto el Docker del proyecto queda listo para desplegar en Railway.
+
 ## 🔜 Roadmap
 
 - [x] Escaneo de QR con cámara

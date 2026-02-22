@@ -1,6 +1,11 @@
 import { useAuthStore } from '@/stores/auth.store';
 
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+// Si la app se sirve en :3000 y no hay proxy, el backend suele estar en :3001
+const defaultApiUrl =
+  typeof window !== 'undefined' && window.location.port === '3000'
+    ? 'http://localhost:3001/api'
+    : '/api';
+const API_URL = import.meta.env.VITE_API_URL || defaultApiUrl;
 
 interface ApiResponse<T> {
   success: boolean;

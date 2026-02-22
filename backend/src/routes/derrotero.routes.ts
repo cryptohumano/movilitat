@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import prisma from '../lib/prisma.js';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware.js';
 import { Role, Sentido } from '@prisma/client';
+import { asStr, asStrOrUndef } from '../lib/req.js';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     if (req.user!.role === Role.ADMIN_EMPRESA && req.user!.empresaId) {
       where.empresaId = req.user!.empresaId;
     } else if (empresaId) {
-      where.empresaId = empresaId;
+      where.empresaId = asStr(empresaId);
     }
 
     if (activo !== undefined) {
@@ -60,8 +61,16 @@ router.post(
   authorize(Role.SUPER_ADMIN, Role.ADMIN_EMPRESA),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id: derroteroId } = req.params;
-      const { nombre, orden, paradaReferenciaId, descripcion, direccion, horaInicio, horaFin, latitud, longitud } = req.body;
+      const derroteroId = asStr(req.params.id);
+      const nombre = asStrOrUndef(req.body.nombre);
+      const orden = req.body.orden;
+      const paradaReferenciaId = asStrOrUndef(req.body.paradaReferenciaId);
+      const descripcion = asStrOrUndef(req.body.descripcion);
+      const direccion = asStrOrUndef(req.body.direccion);
+      const horaInicio = asStrOrUndef(req.body.horaInicio);
+      const horaFin = asStrOrUndef(req.body.horaFin);
+      const latitud = req.body.latitud;
+      const longitud = req.body.longitud;
 
       const derrotero = await prisma.derrotero.findUnique({ where: { id: derroteroId } });
       if (!derrotero) {
@@ -79,18 +88,18 @@ router.post(
       });
       const siguienteOrden = orden != null && Number.isInteger(Number(orden))
         ? Number(orden)
-        : (maxOrden._max.orden ?? 0) + 1;
+        : (maxOrden._max?.orden ?? 0) + 1;
 
       const lat = latitud != null && latitud !== '' ? Number(latitud) : null;
       const lon = longitud != null && longitud !== '' ? Number(longitud) : null;
       const punto = await prisma.puntoControl.create({
         data: {
           derroteroId,
-          nombre: nombre || 'Parada sin nombre',
+          nombre: nombre ?? 'Parada sin nombre',
           orden: siguienteOrden,
           descripcion: descripcion ?? null,
           direccion: direccion ?? null,
-          paradaReferenciaId: paradaReferenciaId || null,
+          paradaReferenciaId: paradaReferenciaId ?? null,
           horaInicio: horaInicio ?? null,
           horaFin: horaFin ?? null,
           latitud: lat != null && !Number.isNaN(lat) ? lat : undefined,
@@ -116,8 +125,19 @@ router.put(
   authorize(Role.SUPER_ADMIN, Role.ADMIN_EMPRESA),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id: derroteroId, puntoId } = req.params;
-      const { nombre, orden, paradaReferenciaId, descripcion, direccion, horaInicio, horaFin, activo, latitud, longitud, checadorId } = req.body;
+      const derroteroId = asStr(req.params.id);
+      const puntoId = asStr(req.params.puntoId);
+      const nombre = asStrOrUndef(req.body.nombre);
+      const orden = req.body.orden;
+      const paradaReferenciaId = asStrOrUndef(req.body.paradaReferenciaId);
+      const descripcion = asStrOrUndef(req.body.descripcion);
+      const direccion = asStrOrUndef(req.body.direccion);
+      const horaInicio = asStrOrUndef(req.body.horaInicio);
+      const horaFin = asStrOrUndef(req.body.horaFin);
+      const activo = req.body.activo;
+      const latitud = req.body.latitud;
+      const longitud = req.body.longitud;
+      const checadorId = asStrOrUndef(req.body.checadorId);
 
       const punto = await prisma.puntoControl.findFirst({
         where: { id: puntoId, derroteroId },
@@ -135,7 +155,7 @@ router.put(
       const data: Record<string, unknown> = {};
       if (nombre !== undefined) data.nombre = nombre;
       if (orden !== undefined) data.orden = Number(orden);
-      if (paradaReferenciaId !== undefined) data.paradaReferenciaId = paradaReferenciaId || null;
+      if (paradaReferenciaId !== undefined) data.paradaReferenciaId = paradaReferenciaId ?? null;
       if (descripcion !== undefined) data.descripcion = descripcion ?? null;
       if (direccion !== undefined) data.direccion = direccion ?? null;
       if (horaInicio !== undefined) data.horaInicio = horaInicio ?? null;
@@ -149,7 +169,7 @@ router.put(
         const lon = longitud !== '' ? Number(longitud) : null;
         data.longitud = lon != null && !Number.isNaN(lon) ? lon : null;
       }
-      if (checadorId !== undefined) data.checadorId = checadorId || null;
+      if (checadorId !== undefined) data.checadorId = checadorId ?? null;
 
       const updated = await prisma.puntoControl.update({
         where: { id: puntoId },
@@ -175,7 +195,8 @@ router.delete(
   authorize(Role.SUPER_ADMIN, Role.ADMIN_EMPRESA),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id: derroteroId, puntoId } = req.params;
+      const derroteroId = asStr(req.params.id);
+      const puntoId = asStr(req.params.puntoId);
 
       const punto = await prisma.puntoControl.findFirst({
         where: { id: puntoId, derroteroId },
@@ -203,7 +224,7 @@ router.delete(
 // Query: sentido=IDA|VUELTA — orden de paradas: IDA = 1→N, VUELTA = N→1 (mismo camino, sentido inverso)
 router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asStr(req.params.id);
     const sentido = (req.query.sentido as string)?.toUpperCase() === 'VUELTA' ? Sentido.VUELTA : Sentido.IDA;
     const orderPuntos = sentido === Sentido.VUELTA ? [{ orden: 'desc' as const }, { nombre: 'desc' as const }] : [{ orden: 'asc' as const }, { nombre: 'asc' as const }];
 
@@ -352,7 +373,7 @@ router.put(
   authorize(Role.SUPER_ADMIN, Role.ADMIN_EMPRESA),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id } = req.params;
+      const id = asStr(req.params.id);
       const { nombre, autobuses, microbuses, combis, activo } = req.body;
 
       const derrotero = await prisma.derrotero.findUnique({

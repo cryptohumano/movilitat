@@ -1,0 +1,12 @@
+# Railway – Backend (monorepo: ejecutar desde raíz del repo)
+# En Railway: no uses Root Directory, o déjalo vacío para que el build use el monorepo.
+# Si usas Root Directory = backend, cambia buildCommand a: yarn install && npx prisma generate && yarn build
+# y startCommand a: npx prisma migrate deploy && node dist/index.js
+
+[build]
+buildCommand = "yarn install && yarn workspace backend run prisma:generate && yarn workspace backend run build"
+
+[deploy]
+startCommand = "yarn start:backend"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 30
