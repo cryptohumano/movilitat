@@ -1,11 +1,12 @@
-# Railway – Frontend (monorepo: ejecutar desde raíz del repo)
-# En Railway: no uses Root Directory, o déjalo vacío para que el build use el monorepo.
+# Railway – Frontend (monorepo)
+# Deploy con Dockerfile: no definir startCommand para usar CMD del Dockerfile (nginx).
 # Variable de entorno en Railway: VITE_API_URL = https://TU-BACKEND.up.railway.app/api
 
 [build]
-buildCommand = "yarn install && yarn workspace frontend run build"
+# Si Railway hace build por fuente en vez de Docker, usa esto:
+# buildCommand = "yarn install && yarn workspace frontend run build"
 
 [deploy]
-startCommand = "yarn start:frontend"
+# No startCommand: la imagen Docker es nginx y su CMD es "nginx -g daemon off;"
 healthcheckPath = "/"
 healthcheckTimeout = 30

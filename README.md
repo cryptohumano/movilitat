@@ -281,8 +281,8 @@ Sí, puedes desplegar el stack en **Railway** usando los Dockerfiles. Railway no
 
 - **New** → **GitHub Repo** (o el mismo repo) → elige este repositorio.
 - **Settings** del servicio:
-  - **Root Directory:** `backend`
-  - **Dockerfile Path:** `Dockerfile` (o `backend/Dockerfile` si el root del deploy es la raíz del repo).
+  - **Root Directory:** dejar **vacío** (raíz del repo). El Dockerfile del backend está preparado para construir con contexto = raíz.
+  - **Dockerfile Path:** `backend/Dockerfile`
 - **Variables:** Railway ya puede enlazar `DATABASE_URL` y `REDIS_URL` desde los plugins (referencias tipo `${{Postgres.DATABASE_URL}}` y `${{Redis.REDIS_URL}}`). Añade:
   - `JWT_SECRET` – un secreto fuerte (ej. generado aleatorio).
   - `JWT_EXPIRES_IN` – opcional, ej. `7d`.
