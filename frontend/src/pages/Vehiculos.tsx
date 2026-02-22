@@ -230,7 +230,7 @@ export function VehiculosPage() {
       setError('La placa es obligatoria');
       return;
     }
-    const empresaId = isSuperAdmin ? form.empresaId : (user?.empresaId ?? '');
+    const empresaId = isSuperAdmin ? form.empresaId : (user?.empresa?.id ?? '');
     if (isSuperAdmin && !form.empresaId) {
       setError('Selecciona una empresa');
       return;
@@ -297,7 +297,7 @@ export function VehiculosPage() {
     setAddingChoferId(choferId);
     setError('');
     try {
-      const res = await api.post<{ data: { chofer: ChoferAsignado['chofer'] } }>(`/vehiculos/${vehiculoId}/choferes`, { choferId });
+      const res = await api.post<{ chofer: ChoferAsignado['chofer'] }>(`/vehiculos/${vehiculoId}/choferes`, { choferId });
       if (res.success && res.data?.chofer) {
         setVehiculos((prev) =>
           prev.map((ve) =>

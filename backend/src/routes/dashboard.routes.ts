@@ -399,7 +399,7 @@ async function getDashboardChofer(userId: string, hoy: Date, inicioMes: Date) {
     return { tipo: 'CHOFER', error: 'No tienes perfil de chofer' };
   }
 
-  const [checkInsHoy, checkInsMes, gastoMes, checkInsFechasMes, registrosRutaMes] = await Promise.all([
+  const results = await Promise.all([
     prisma.checkIn.count({
       where: { choferId: chofer.id, fechaHora: { gte: hoy } },
     }),
@@ -419,6 +419,13 @@ async function getDashboardChofer(userId: string, hoy: Date, inicioMes: Date) {
       _sum: { ingresos: true, gastos: true },
     }),
   ]);
+  const checkInsHoy = results[0];
+  const checkInsMes = results[1];
+  const gastoMes = results[2] as { _sum: { monto: unknown } };
+  const checkInsFechasMes = results[3] as { fechaHora: Date }[];
+  const registrosRutaMes = (results[4] ?? { _sum: { ingresos: null, gastos: null } }) as {
+    _sum: { ingresos: unknown; gastos: unknown };
+  };
 
   const porDia = new Map<string, { min: number; max: number }>();
   for (const c of checkInsFechasMes) {

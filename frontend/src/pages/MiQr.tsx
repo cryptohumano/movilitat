@@ -34,7 +34,7 @@ export function MiQrPage() {
       return;
     }
     api
-      .get<{ data: UnidadActivaResponse }>('/chofer/unidad-activa')
+      .get<UnidadActivaResponse>('/chofer/unidad-activa')
       .then((res) => {
         if (!res.success || !res.data) return;
         const data = res.data;

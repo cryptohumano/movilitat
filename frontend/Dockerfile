@@ -1,6 +1,6 @@
 # ===========================================
-# Movilitat Frontend Dockerfile
-# Vite 7 + React + TypeScript
+# Movilitat Frontend Dockerfile (monorepo root context)
+# Vite + React + TypeScript
 # ===========================================
 
 FROM node:20-alpine AS base
@@ -10,11 +10,13 @@ RUN corepack enable && corepack prepare yarn@4.6.0 --activate
 WORKDIR /app
 
 # ===========================================
-# Dependencies
+# Dependencies (monorepo completo para workspaces)
 # ===========================================
 FROM base AS deps
 
-COPY package.json yarn.lock .yarnrc.yml ./
+COPY package.json yarn.lock .yarnrc.yml* ./
+COPY backend/package.json ./backend/
+COPY frontend/package.json ./frontend/
 
 RUN yarn install --immutable
 
@@ -30,18 +32,15 @@ COPY . .
 
 ENV NODE_ENV=production
 
-RUN yarn build
+RUN yarn workspace frontend build
 
 # ===========================================
 # Production - Nginx
 # ===========================================
 FROM nginx:alpine AS runner
 
-# Copy built assets
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Copy nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/frontend/dist /usr/share/nginx/html
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 3000
 

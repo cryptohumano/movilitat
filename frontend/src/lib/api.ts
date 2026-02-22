@@ -149,3 +149,13 @@ export interface DashboardData {
     monto: number;
   }>;
 }
+
+/** Parada cercana (API /paradas-cercanas) */
+export interface ParadaCercanaItem {
+  id: string;
+  nombre: string;
+  latitud: number;
+  longitud: number;
+  distanciaKm?: number;
+  derrotero?: { numero: number; nombre: string; empresa?: { nombreCorto?: string; codigo?: string } };
+}

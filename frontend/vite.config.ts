@@ -1,18 +1,19 @@
+import type { PluginOption } from 'vite';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
-export default defineConfig(({ mode }) => ({
-  plugins: [
+export default defineConfig(({ mode }) => {
+  const plugins: PluginOption[] = [
     react(),
     tailwindcss(),
-    // PWA solo en producción: en dev no cargamos el plugin para no generar sw.js
-    // y así /registro, /api/*, etc. van directo al servidor sin service worker
-    ...(mode === 'production'
-      ? [
-          VitePWA({
+  ];
+  // PWA solo en producción: en dev no cargamos el plugin para no generar sw.js
+  if (mode === 'production') {
+    plugins.push(
+      VitePWA({
             registerType: 'autoUpdate',
             includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
             manifest: {
@@ -39,7 +40,6 @@ export default defineConfig(({ mode }) => ({
                 {
                   urlPattern: /\/api\/.*/i,
                   handler: 'NetworkOnly',
-                  options: { networkTimeoutSeconds: 10 },
                 },
                 {
                   urlPattern: /^https:\/\/api\./i,
@@ -52,10 +52,11 @@ export default defineConfig(({ mode }) => ({
                 },
               ],
             },
-          }),
-        ]
-      : []),
-  ],
+          })
+    );
+  }
+  return {
+  plugins,
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -75,4 +76,5 @@ export default defineConfig(({ mode }) => ({
     outDir: 'dist',
     sourcemap: true,
   },
-}));
+};
+});

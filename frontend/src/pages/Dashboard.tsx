@@ -12,7 +12,6 @@ import {
   Users,
   Route,
   Loader2,
-  CheckCircle,
   CircleOff,
   Activity,
   MapPin,
@@ -25,7 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useAuthStore } from '@/stores/auth.store';
-import { api, type DashboardData } from '@/lib/api';
+import { api, type DashboardData, type ParadaCercanaItem } from '@/lib/api';
 import { formatCurrency, formatRelativeTime } from '@/lib/utils';
 
 export function DashboardPage() {
@@ -33,11 +32,16 @@ export function DashboardPage() {
   const user = useAuthStore((state) => state.user);
   const [data, setData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [unidadActiva, setUnidadActiva] = useState<{
+  type UnidadActivaState = {
+    choferId?: string;
     tieneUnidadActiva: boolean;
     unidadActiva: { id: string; placa: string; numeroEconomico?: string; tipo: string; derrotero?: { numero: number; nombre: string }; empresa?: { nombreCorto: string } } | null;
-    unidadesAsignadas: Array<{ id: string; placa: string; numeroEconomico?: string; tipo: string; derrotero?: { numero: number; nombre: string }; empresa?: { nombreCorto: string } }>;
-  } | null>(null);
+    unidadesAsignadas: Array<{ id: string; placa: string; numeroEconomico?: string; tipo: string; derrotero?: { numero: number; nombre: string }; empresa?: { nombreCorto: string }; choferActivo?: { id: string; user?: { nombre: string } } | null; encerradoHasta?: string | null }>;
+    unidadActivaDesde?: string | null;
+    sentidoActual?: 'IDA' | 'VUELTA';
+  };
+  const [unidadActiva, setUnidadActiva] = useState<UnidadActivaState | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [unidadActivaLoading, setUnidadActivaLoading] = useState(false);
   const [activarTerminarLoading, setActivarTerminarLoading] = useState(false);
   const [activarError, setActivarError] = useState('');
@@ -85,8 +89,15 @@ export function DashboardPage() {
     setUnidadActivaLoading(true);
     setActivarError('');
     try {
-      const res = await api.get<{ data: typeof unidadActiva }>('/chofer/unidad-activa');
-      if (res.success && res.data) setUnidadActiva(res.data);
+      const res = await api.get<UnidadActivaState | { data: UnidadActivaState }>('/chofer/unidad-activa');
+      if (!res.success || !res.data) return;
+      // Soportar respuesta directa { data: payload } o anidada { data: { data: payload } }
+      const raw = res.data as UnidadActivaState & { data?: UnidadActivaState };
+      const payload: UnidadActivaState =
+        raw != null && typeof raw === 'object' && 'data' in raw && raw.data != null && typeof raw.data === 'object'
+          ? (raw.data as UnidadActivaState)
+          : (raw as UnidadActivaState);
+      if (payload && 'tieneUnidadActiva' in payload) setUnidadActiva(payload);
     } catch (e) {
       console.error(e);
     } finally {
@@ -327,12 +338,12 @@ export function DashboardPage() {
                       {unidadActiva.unidadActiva.derrotero && ` · Ruta ${unidadActiva.unidadActiva.derrotero.numero} ${unidadActiva.unidadActiva.derrotero.nombre}`}
                     </p>
                     <p className="text-sm mt-1">
-                      Sentido: <strong>{(unidadActiva as any).sentidoActual === 'VUELTA' ? 'Vuelta' : 'Ida'}</strong>
+                      Sentido: <strong>{unidadActiva.sentidoActual === 'VUELTA' ? 'Vuelta' : 'Ida'}</strong>
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-7 px-2 ml-1 text-xs"
-                        onClick={() => handleCambiarSentido((unidadActiva as any).sentidoActual === 'VUELTA' ? 'IDA' : 'VUELTA')}
+                        onClick={() => handleCambiarSentido(unidadActiva.sentidoActual === 'VUELTA' ? 'IDA' : 'VUELTA')}
                       >
                         Cambiar
                       </Button>
@@ -796,7 +807,7 @@ export function DashboardPage() {
                                   </p>
                                 </div>
                                 <span className="text-xs text-muted-foreground shrink-0">
-                                  {p.distanciaKm < 1 ? `${Math.round(p.distanciaKm * 1000)} m` : `${p.distanciaKm.toFixed(1)} km`}
+                                  {(p.distanciaKm ?? 0) < 1 ? `${Math.round((p.distanciaKm ?? 0) * 1000)} m` : `${(p.distanciaKm ?? 0).toFixed(1)} km`}
                                 </span>
                               </li>
                             ))}
@@ -1171,7 +1182,7 @@ function ParadasCercanasMap({
           weight: 2,
           fillOpacity: 0.7,
         })
-          .bindPopup(`${p.nombre}<br><small>${p.derrotero?.empresa?.nombreCorto || 'Ruta'} – Ruta ${p.derrotero?.numero} · ${p.distanciaKm < 1 ? `${Math.round(p.distanciaKm * 1000)} m` : `${p.distanciaKm.toFixed(1)} km`}</small>`)
+          .bindPopup(`${p.nombre}<br><small>${p.derrotero?.empresa?.nombreCorto || 'Ruta'} – Ruta ${p.derrotero?.numero} · ${(p.distanciaKm ?? 0) < 1 ? `${Math.round((p.distanciaKm ?? 0) * 1000)} m` : `${(p.distanciaKm ?? 0).toFixed(1)} km`}</small>`)
           .addTo(map);
       });
     };

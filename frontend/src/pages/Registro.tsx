@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Bus, Phone, Lock, Mail, User, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Bus, Phone, Lock, Mail, User as UserIcon, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -211,7 +211,7 @@ export function RegistroPage() {
             <div className="grid gap-2">
               <label className="text-sm font-medium">Nombre</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
                   className="pl-10"
                   placeholder="Nombre"

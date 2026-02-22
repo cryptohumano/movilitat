@@ -120,7 +120,7 @@ export function RutasPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingPuntoId, setEditingPuntoId] = useState<string | null>(null);
   const [form, setForm] = useState({ nombre: '', orden: '', latitud: '', longitud: '', paradaReferenciaId: '' });
-  const [editForm, setEditForm] = useState({ nombre: '', orden: '', latitud: '', longitud: '', paradaReferenciaId: '' });
+  const [editForm, setEditForm] = useState({ nombre: '', orden: '', latitud: '', longitud: '', paradaReferenciaId: '', checadorId: '' as string | null });
   const [buscarRef, setBuscarRef] = useState('');
   const [paradasRef, setParadasRef] = useState<ParadaRefOption[]>([]);
   const [loadingRef, setLoadingRef] = useState(false);
@@ -130,7 +130,7 @@ export function RutasPage() {
   const [loadingGps, setLoadingGps] = useState(false);
   const [loadingGpsEdit, setLoadingGpsEdit] = useState(false);
   const [errorGps, setErrorGps] = useState('');
-  const [checadores, setChecadores] = useState<{ id: string; checadorId: string; nombre: string; telefono: string }[]>([]);
+  const [, setChecadores] = useState<{ id: string; checadorId: string; nombre: string; telefono: string }[]>([]);
   const [showNewDerroteroForm, setShowNewDerroteroForm] = useState(false);
   const [savingNewDerrotero, setSavingNewDerrotero] = useState(false);
   const [newDerroteroForm, setNewDerroteroForm] = useState({
@@ -400,7 +400,7 @@ export function RutasPage() {
       if (form.orden.trim() && !Number.isNaN(Number(form.orden))) body.orden = Number(form.orden);
       if (form.latitud.trim() && !Number.isNaN(Number(form.latitud))) body.latitud = Number(form.latitud);
       if (form.longitud.trim() && !Number.isNaN(Number(form.longitud))) body.longitud = Number(form.longitud);
-      const res = await api.post<{ data: PuntoControlItem }>(
+      const res = await api.post<PuntoControlItem>(
         `/derroteros/${selected.id}/puntos`,
         body
       );
@@ -439,7 +439,7 @@ export function RutasPage() {
       if (editForm.longitud !== undefined && editForm.longitud !== '' && !Number.isNaN(Number(editForm.longitud))) body.longitud = Number(editForm.longitud);
       if (editForm.paradaReferenciaId !== undefined) body.paradaReferenciaId = editForm.paradaReferenciaId || null;
       if (editForm.checadorId !== undefined) body.checadorId = editForm.checadorId || null;
-      const res = await api.put<{ data: PuntoControlItem }>(
+      const res = await api.put<PuntoControlItem>(
         `/derroteros/${selected.id}/puntos/${editingPuntoId}`,
         body
       );
@@ -497,6 +497,8 @@ export function RutasPage() {
       orden: String(p.orden),
       latitud: p.latitud != null ? String(p.latitud) : '',
       longitud: p.longitud != null ? String(p.longitud) : '',
+      paradaReferenciaId: p.paradaReferencia?.id ?? '',
+      checadorId: p.checadorId ?? p.checador?.id ?? null,
     });
   };
 

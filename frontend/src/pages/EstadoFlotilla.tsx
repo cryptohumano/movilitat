@@ -112,7 +112,7 @@ export function EstadoFlotillaPage() {
   const [loadingUnidades, setLoadingUnidades] = useState(false);
   const [filtroEmpresa, setFiltroEmpresa] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
-  const [tab, setTab] = useState<'resumen' | 'unidades' | 'checkins'>('resumen');
+  const [tab, setTab] = useState<'resumen' | 'organizacion' | 'unidades' | 'checkins'>('resumen');
   const [checkIns, setCheckIns] = useState<CheckInDetalle[]>([]);
   const [loadingCheckIns, setLoadingCheckIns] = useState(false);
   const [checkInDesde, setCheckInDesde] = useState('');

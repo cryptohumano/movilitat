@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth.store';
 import { Bus, Bell, Menu, LogOut } from 'lucide-react';
@@ -7,9 +8,10 @@ interface HeaderProps {
   title?: string;
   showMenu?: boolean;
   onMenuClick?: () => void;
+  leftAction?: ReactNode;
 }
 
-export function Header({ title, showMenu = false, onMenuClick }: HeaderProps) {
+export function Header({ title, showMenu = false, onMenuClick, leftAction }: HeaderProps) {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
@@ -24,7 +26,7 @@ export function Header({ title, showMenu = false, onMenuClick }: HeaderProps) {
       <div className="flex items-center justify-between px-4 h-14">
         {/* Left */}
         <div className="flex items-center gap-3">
-          {showMenu ? (
+          {leftAction ?? (showMenu ? (
             <Button variant="ghost" size="icon-sm" onClick={onMenuClick}>
               <Menu className="size-5" />
             </Button>
@@ -35,7 +37,7 @@ export function Header({ title, showMenu = false, onMenuClick }: HeaderProps) {
               </div>
               <span className="font-semibold text-lg">Movilitat</span>
             </div>
-          )}
+          ))}
           
           {title && (
             <h1 className="font-semibold text-lg">{title}</h1>

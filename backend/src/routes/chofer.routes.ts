@@ -68,24 +68,57 @@ router.get(
           },
         });
       }
-      const unidadesAsignadas = (chofer.asignacionesVehiculo ?? []).map((a) => ({
-        ...a.vehiculo,
-        choferActivo: a.vehiculo.choferActivo,
-      }));
+      const asignaciones = chofer.asignacionesVehiculo ?? [];
+      const unidadesAsignadas = asignaciones.map((a) => {
+        const v = a?.vehiculo;
+        if (!v) return null;
+        return {
+          id: v.id,
+          placa: v.placa,
+          numeroEconomico: v.numeroEconomico ?? null,
+          tipo: v.tipo,
+          encerradoHasta: v.encerradoHasta instanceof Date ? v.encerradoHasta.toISOString() : null,
+          derrotero: v.derrotero ? { numero: v.derrotero.numero, nombre: v.derrotero.nombre } : null,
+          empresa: v.empresa ? { nombreCorto: v.empresa.nombreCorto } : null,
+          choferActivo: v.choferActivo
+            ? { id: v.choferActivo.id, nombre: v.choferActivo.user?.nombre ?? null }
+            : null,
+        };
+      }).filter((u): u is NonNullable<typeof u> => u != null);
+
+      const ua = chofer.vehiculoActivo;
+      const unidadActiva = ua
+        ? {
+            id: ua.id,
+            placa: ua.placa,
+            numeroEconomico: ua.numeroEconomico ?? null,
+            tipo: ua.tipo,
+            derroteroId: ua.derroteroId ?? null,
+            derrotero: ua.derrotero ? { id: ua.derrotero.id, numero: ua.derrotero.numero, nombre: ua.derrotero.nombre } : null,
+            empresa: ua.empresa ? { nombreCorto: ua.empresa.nombreCorto } : null,
+          }
+        : null;
+
       res.json({
         success: true,
         data: {
           choferId: chofer.id,
           tieneUnidadActiva: !!chofer.vehiculoActivoId,
-          unidadActiva: chofer.vehiculoActivo,
-          unidadActivaDesde: chofer.unidadActivaDesde?.toISOString() ?? null,
+          unidadActiva,
+          unidadActivaDesde: chofer.unidadActivaDesde instanceof Date ? chofer.unidadActivaDesde.toISOString() : null,
           sentidoActual: chofer.sentidoActual ?? Sentido.IDA,
           unidadesAsignadas,
         },
       });
     } catch (e) {
-      console.error('Error obteniendo unidad activa:', e);
-      res.status(500).json({ success: false, message: 'Error al obtener estado' });
+      const err = e as Error;
+      console.error('Error obteniendo unidad activa:', err?.message ?? e);
+      console.error(err?.stack);
+      res.status(500).json({
+        success: false,
+        message: 'Error al obtener estado',
+        ...(process.env.NODE_ENV !== 'production' && { detail: err?.message }),
+      });
     }
   }
 );
