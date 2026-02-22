@@ -164,32 +164,25 @@ const configuracionInicial = [
 ];
 
 async function main() {
-  console.log('🚀 Iniciando seed de RutaCheck...\n');
+  console.log('🚀 Iniciando seed idempotente de RutaCheck (no borra datos existentes)...\n');
 
-  // 1. Limpiar datos existentes
-  console.log('🧹 Limpiando datos existentes...');
-  await prisma.checkIn.deleteMany();
-  await prisma.pago.deleteMany();
-  await prisma.puntoControl.deleteMany();
-  await prisma.vehiculo.deleteMany();
-  await prisma.derrotero.deleteMany();
-  await prisma.checador.deleteMany();
-  await prisma.chofer.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.empresa.deleteMany();
-  await prisma.configuracionSistema.deleteMany();
+  const hashedPassword = await bcrypt.hash('admin123', 10);
 
-  // 2. Crear configuración del sistema
-  console.log('⚙️  Creando configuración del sistema...');
+  // 1. Configuración del sistema (upsert por clave)
+  console.log('⚙️  Configuración del sistema...');
   for (const config of configuracionInicial) {
-    await prisma.configuracionSistema.create({ data: config });
+    await prisma.configuracionSistema.upsert({
+      where: { clave: config.clave },
+      create: config,
+      update: { valor: config.valor, descripcion: config.descripcion },
+    });
   }
 
-  // 3. Crear usuario Super Admin
-  console.log('👤 Creando Super Admin...');
-  const hashedPassword = await bcrypt.hash('admin123', 10);
-  const superAdmin = await prisma.user.create({
-    data: {
+  // 2. Super Admin (upsert por email)
+  console.log('👤 Super Admin...');
+  const superAdmin = await prisma.user.upsert({
+    where: { email: 'admin@rutacheck.mx' },
+    create: {
       email: 'admin@rutacheck.mx',
       telefono: '5551234567',
       password: hashedPassword,
@@ -197,43 +190,46 @@ async function main() {
       apellido: 'Sistema',
       role: Role.SUPER_ADMIN,
     },
+    update: {}, // No sobrescribir datos de un admin ya existente
   });
   console.log(`   ✅ Super Admin: ${superAdmin.email}`);
 
-  // 4. Crear empresas, derroteros y vehículos
-  console.log('\n🏢 Creando empresas y derroteros...\n');
-
-  let totalVehiculos = 0;
+  // 3. Empresas, derroteros y vehículos de muestra (upsert; no borrar)
+  console.log('\n🏢 Empresas y derroteros...\n');
   let totalDerroteros = 0;
 
   for (const empresaData of empresasData) {
-    // Calcular totales de la empresa
     const totalAutobuses = empresaData.derroteros.reduce((sum, d) => sum + d.autobuses, 0);
     const totalMicrobuses = empresaData.derroteros.reduce((sum, d) => sum + d.microbuses, 0);
     const totalCombis = empresaData.derroteros.reduce((sum, d) => sum + d.combis, 0);
     const totalVehiculosEmpresa = totalAutobuses + totalMicrobuses + totalCombis;
 
-    // Crear empresa
-    const empresa = await prisma.empresa.create({
-      data: {
+    const empresa = await prisma.empresa.upsert({
+      where: { codigo: empresaData.codigo },
+      create: {
         codigo: empresaData.codigo,
         nombre: empresaData.nombre,
         nombreCorto: empresaData.nombreCorto,
         totalVehiculos: totalVehiculosEmpresa,
         totalDerroteros: empresaData.derroteros.length,
-        precioMensualDerrotero: 750, // Precio promedio
+        precioMensualDerrotero: 750,
+      },
+      update: {
+        nombre: empresaData.nombre,
+        nombreCorto: empresaData.nombreCorto,
+        totalVehiculos: totalVehiculosEmpresa,
+        totalDerroteros: empresaData.derroteros.length,
       },
     });
 
     console.log(`📍 ${empresaData.codigo}: ${empresaData.nombreCorto}`);
-    console.log(`   ${empresaData.derroteros.length} derroteros, ${totalVehiculosEmpresa} vehículos`);
 
-    // Crear derroteros y vehículos para esta empresa
     for (const derroteroData of empresaData.derroteros) {
       const totalVehiculosDerrotero = derroteroData.autobuses + derroteroData.microbuses + derroteroData.combis;
 
-      const derrotero = await prisma.derrotero.create({
-        data: {
+      const derrotero = await prisma.derrotero.upsert({
+        where: { empresaId_numero: { empresaId: empresa.id, numero: derroteroData.numero } },
+        create: {
           numero: derroteroData.numero,
           nombre: derroteroData.nombre,
           empresaId: empresa.id,
@@ -244,49 +240,41 @@ async function main() {
           horarioInicio: '04:00',
           horarioFin: '20:00',
         },
+        update: { nombre: derroteroData.nombre, autobuses: derroteroData.autobuses, microbuses: derroteroData.microbuses, combis: derroteroData.combis, totalVehiculos: totalVehiculosDerrotero },
       });
 
-      // Crear vehículos de muestra para este derrotero
-      // Solo creamos algunos vehículos de ejemplo, no todos
       const vehiculosMuestra = Math.min(5, totalVehiculosDerrotero);
-      
       for (let i = 0; i < vehiculosMuestra; i++) {
         let tipo: TipoVehiculo;
-        if (i < derroteroData.autobuses) {
-          tipo = TipoVehiculo.AUTOBUS;
-        } else if (i < derroteroData.autobuses + derroteroData.microbuses) {
-          tipo = TipoVehiculo.MICROBUS;
-        } else {
-          tipo = TipoVehiculo.COMBI;
-        }
-
+        if (i < derroteroData.autobuses) tipo = TipoVehiculo.AUTOBUS;
+        else if (i < derroteroData.autobuses + derroteroData.microbuses) tipo = TipoVehiculo.MICROBUS;
+        else tipo = TipoVehiculo.COMBI;
         const placa = `${empresaData.codigo.slice(1)}-${derrotero.numero}-${String(i + 1).padStart(3, '0')}`;
-        
-        await prisma.vehiculo.create({
-          data: {
+        await prisma.vehiculo.upsert({
+          where: { placa },
+          create: {
             placa,
             numeroEconomico: `${empresa.codigo}-${derrotero.numero}-${i + 1}`,
             tipo,
             empresaId: empresa.id,
             derroteroId: derrotero.id,
           },
+          update: {},
         });
       }
-
       totalDerroteros++;
     }
-
-    totalVehiculos += totalVehiculosEmpresa;
   }
 
-  // 5. Crear usuarios de prueba para cada rol
-  console.log('\n👥 Creando usuarios de prueba...\n');
-
-  // Admin de empresa (para E01)
+  // 4. Usuarios de sistema y roles (upsert; no borrar)
+  console.log('\n👥 Usuarios de sistema...\n');
   const empresaE01 = await prisma.empresa.findUnique({ where: { codigo: 'E01' } });
+  if (!empresaE01) throw new Error('Empresa E01 no encontrada');
+
   if (empresaE01) {
-    const adminEmpresa = await prisma.user.create({
-      data: {
+    await prisma.user.upsert({
+      where: { email: 'admin@ruta25.mx' },
+      create: {
         email: 'admin@ruta25.mx',
         telefono: '5559876543',
         password: hashedPassword,
@@ -295,43 +283,48 @@ async function main() {
         role: Role.ADMIN_EMPRESA,
         empresaId: empresaE01.id,
       },
+      update: {},
     });
-    console.log(`   ✅ Admin Empresa: ${adminEmpresa.email}`);
+    console.log(`   ✅ Admin Empresa: admin@ruta25.mx`);
   }
 
-  // Checador de prueba
-  const checadorUser = await prisma.user.create({
-    data: {
+  const checadorUser = await prisma.user.upsert({
+    where: { telefono: '5551111111' },
+    create: {
       telefono: '5551111111',
       password: hashedPassword,
       nombre: 'Juan',
       apellido: 'Checador',
       role: Role.CHECADOR,
     },
+    update: {},
   });
-  const checador = await prisma.checador.create({
-    data: {
-      userId: checadorUser.id,
-      curp: 'CHEC900101HDFRRL01',
-    },
+  const checador = await prisma.checador.upsert({
+    where: { userId: checadorUser.id },
+    create: { userId: checadorUser.id, curp: 'CHEC900101HDFRRL01' },
+    update: {},
   });
   console.log(`   ✅ Checador: ${checadorUser.telefono}`);
 
-  // Punto de control de prueba (para que el checador pueda registrar check-ins)
   const primerDerrotero = await prisma.derrotero.findFirst({ where: { empresa: { codigo: 'E01' } } });
   if (primerDerrotero) {
-    await prisma.puntoControl.create({
-      data: {
-        nombre: 'Punto Demo Calacoaya',
-        derroteroId: primerDerrotero.id,
-        checadorId: checador.id,
-        orden: 1,
-        activo: true,
-      },
+    const existePunto = await prisma.puntoControl.findFirst({
+      where: { derroteroId: primerDerrotero.id, nombre: 'Punto Demo Calacoaya' },
     });
+    if (!existePunto) {
+      await prisma.puntoControl.create({
+        data: {
+          nombre: 'Punto Demo Calacoaya',
+          derroteroId: primerDerrotero.id,
+          checadorId: checador.id,
+          orden: 1,
+          activo: true,
+        },
+      });
+    }
   }
 
-  // Ruta teórica Insurgentes (puntos tipo WiFi/referencia, orden ida = Norte→Sur; vuelta = mismo camino, orden inverso)
+  // Ruta teórica Insurgentes (upsert empresa E99 y derrotero; paradas upsert; puntos solo si no existen)
   const puntosInsurgentes: Array<{ idExterno: string; nombre: string; latitud: number; longitud: number; alcaldia: string }> = [
     { idExterno: 'INSURGENTES_01', nombre: 'Cuatro Caminos', latitud: 19.461, longitud: -99.142, alcaldia: 'Miguel Hidalgo' },
     { idExterno: 'INSURGENTES_02', nombre: 'Normal', latitud: 19.455, longitud: -99.148, alcaldia: 'Cuauhtémoc' },
@@ -346,23 +339,21 @@ async function main() {
     { idExterno: 'INSURGENTES_11', nombre: 'Ciudad Universitaria', latitud: 19.328, longitud: -99.185, alcaldia: 'Coyoacán' },
     { idExterno: 'INSURGENTES_12', nombre: 'Tasqueña', latitud: 19.345, longitud: -99.192, alcaldia: 'Coyoacán' },
   ];
-  const empresaInsurgentes = await prisma.empresa.create({
-    data: {
-      codigo: 'E99',
-      nombre: 'Ruta teórica Insurgentes (demo)',
-      nombreCorto: 'Insurgentes',
-      totalVehiculos: 0,
-      totalDerroteros: 1,
-    },
+  const empresaInsurgentes = await prisma.empresa.upsert({
+    where: { codigo: 'E99' },
+    create: { codigo: 'E99', nombre: 'Ruta teórica Insurgentes (demo)', nombreCorto: 'Insurgentes', totalVehiculos: 0, totalDerroteros: 1 },
+    update: {},
   });
-  const derroteroInsurgentes = await prisma.derrotero.create({
-    data: {
+  const derroteroInsurgentes = await prisma.derrotero.upsert({
+    where: { empresaId_numero: { empresaId: empresaInsurgentes.id, numero: 1 } },
+    create: {
       numero: 1,
       nombre: 'Insurgentes (Cuatro Caminos - Tasqueña)',
       empresaId: empresaInsurgentes.id,
       horarioInicio: '05:00',
       horarioFin: '23:00',
     },
+    update: {},
   });
   const paradasInsurgentesIds: string[] = [];
   for (const p of puntosInsurgentes) {
@@ -381,22 +372,26 @@ async function main() {
     paradasInsurgentesIds.push(parada.id);
   }
   for (let i = 0; i < paradasInsurgentesIds.length; i++) {
-    await prisma.puntoControl.create({
-      data: {
-        nombre: puntosInsurgentes[i].nombre,
-        derroteroId: derroteroInsurgentes.id,
-        paradaReferenciaId: paradasInsurgentesIds[i],
-        orden: i + 1,
-        activo: true,
-      },
+    const yaExiste = await prisma.puntoControl.findFirst({
+      where: { derroteroId: derroteroInsurgentes.id, orden: i + 1 },
     });
+    if (!yaExiste) {
+      await prisma.puntoControl.create({
+        data: {
+          nombre: puntosInsurgentes[i].nombre,
+          derroteroId: derroteroInsurgentes.id,
+          paradaReferenciaId: paradasInsurgentesIds[i],
+          orden: i + 1,
+          activo: true,
+        },
+      });
+    }
   }
-  console.log(`   ✅ Ruta teórica Insurgentes: ${puntosInsurgentes.length} paradas (ida: orden 1→${puntosInsurgentes.length}, vuelta: inverso)`);
+  console.log(`   ✅ Ruta Insurgentes: ${puntosInsurgentes.length} paradas`);
 
-  // Choferes de prueba: Pedro, Juan y Edgar (E01) para datos de negocio
-  if (!empresaE01) throw new Error('Empresa E01 no encontrada');
-  const choferPedro = await prisma.user.create({
-    data: {
+  const choferPedro = await prisma.user.upsert({
+    where: { telefono: '5552222222' },
+    create: {
       telefono: '5552222222',
       password: hashedPassword,
       nombre: 'Pedro',
@@ -404,14 +399,18 @@ async function main() {
       role: Role.CHOFER,
       empresaId: empresaE01.id,
     },
+    update: {},
   });
-  const choferPedroRecord = await prisma.chofer.create({
-    data: { userId: choferPedro.id, licencia: 'LIC123456', tipoLicencia: 'E' },
+  const choferPedroRecord = await prisma.chofer.upsert({
+    where: { userId: choferPedro.id },
+    create: { userId: choferPedro.id, licencia: 'LIC123456', tipoLicencia: 'E' },
+    update: {},
   });
   console.log(`   ✅ Chofer: ${choferPedro.telefono} (Pedro)`);
 
-  const choferJuan = await prisma.user.create({
-    data: {
+  const choferJuan = await prisma.user.upsert({
+    where: { telefono: '5553333333' },
+    create: {
       telefono: '5553333333',
       password: hashedPassword,
       nombre: 'Juan',
@@ -419,14 +418,18 @@ async function main() {
       role: Role.CHOFER,
       empresaId: empresaE01.id,
     },
+    update: {},
   });
-  const choferJuanRecord = await prisma.chofer.create({
-    data: { userId: choferJuan.id, licencia: 'LIC222333', tipoLicencia: 'E' },
+  const choferJuanRecord = await prisma.chofer.upsert({
+    where: { userId: choferJuan.id },
+    create: { userId: choferJuan.id, licencia: 'LIC222333', tipoLicencia: 'E' },
+    update: {},
   });
   console.log(`   ✅ Chofer: ${choferJuan.telefono} (Juan)`);
 
-  const choferEdgar = await prisma.user.create({
-    data: {
+  const choferEdgar = await prisma.user.upsert({
+    where: { telefono: '5554444444' },
+    create: {
       telefono: '5554444444',
       password: hashedPassword,
       nombre: 'Edgar',
@@ -434,47 +437,58 @@ async function main() {
       role: Role.CHOFER,
       empresaId: empresaE01.id,
     },
+    update: {},
   });
-  const choferEdgarRecord = await prisma.chofer.create({
-    data: { userId: choferEdgar.id, licencia: 'LIC333444', tipoLicencia: 'E' },
+  const choferEdgarRecord = await prisma.chofer.upsert({
+    where: { userId: choferEdgar.id },
+    create: { userId: choferEdgar.id, licencia: 'LIC333444', tipoLicencia: 'E' },
+    update: {},
   });
   console.log(`   ✅ Chofer: ${choferEdgar.telefono} (Edgar)`);
 
-  // Pasajero de prueba (usuario de transporte público)
-  const pasajero = await prisma.user.create({
-    data: {
+  const pasajero = await prisma.user.upsert({
+    where: { telefono: '5550000001' },
+    create: {
       telefono: '5550000001',
       password: hashedPassword,
       nombre: 'María',
       apellido: 'Pasajera',
       role: Role.PASAJERO,
     },
+    update: {},
   });
   console.log(`   ✅ Pasajero: ${pasajero.telefono} (María)`);
+
   if (primerDerrotero) {
-    await prisma.suscripcionRuta.create({
-      data: {
-        userId: pasajero.id,
-        derroteroId: primerDerrotero.id,
-        notificaciones: true,
-      },
+    await prisma.suscripcionRuta.upsert({
+      where: { userId_derroteroId: { userId: pasajero.id, derroteroId: primerDerrotero.id } },
+      create: { userId: pasajero.id, derroteroId: primerDerrotero.id, notificaciones: true },
+      update: {},
     });
-    console.log(`   📌 Pasajero suscrito al derrotero: ${primerDerrotero.nombre}`);
   }
 
-  // Asignar vehículos: Juan 2, Edgar 2, Pedro 1 (ruta E01 primer derrotero)
+  // Asignar vehículos a choferes (upsert VehiculoChofer)
   const vehiculosE01 = await prisma.vehiculo.findMany({
     where: { empresa: { codigo: 'E01' } },
     take: 5,
     orderBy: { placa: 'asc' },
   });
   if (vehiculosE01.length >= 5) {
-    await prisma.vehiculo.update({ where: { id: vehiculosE01[0].id }, data: { choferId: choferJuanRecord.id } });
-    await prisma.vehiculo.update({ where: { id: vehiculosE01[1].id }, data: { choferId: choferJuanRecord.id } });
-    await prisma.vehiculo.update({ where: { id: vehiculosE01[2].id }, data: { choferId: choferEdgarRecord.id } });
-    await prisma.vehiculo.update({ where: { id: vehiculosE01[3].id }, data: { choferId: choferEdgarRecord.id } });
-    await prisma.vehiculo.update({ where: { id: vehiculosE01[4].id }, data: { choferId: choferPedroRecord.id } });
-    console.log(`   📌 Juan: ${vehiculosE01[0].placa}, ${vehiculosE01[1].placa} | Edgar: ${vehiculosE01[2].placa}, ${vehiculosE01[3].placa} | Pedro: ${vehiculosE01[4].placa}`);
+    const pairs: [string, typeof choferJuanRecord][] = [
+      [vehiculosE01[0].id, choferJuanRecord],
+      [vehiculosE01[1].id, choferJuanRecord],
+      [vehiculosE01[2].id, choferEdgarRecord],
+      [vehiculosE01[3].id, choferEdgarRecord],
+      [vehiculosE01[4].id, choferPedroRecord],
+    ];
+    for (const [vehiculoId, choferRec] of pairs) {
+      await prisma.vehiculoChofer.upsert({
+        where: { vehiculoId_choferId: { vehiculoId, choferId: choferRec.id } },
+        create: { vehiculoId, choferId: choferRec.id },
+        update: {},
+      });
+    }
+    console.log(`   📌 Asignaciones E01: Juan, Juan, Edgar, Edgar, Pedro`);
   }
 
   // Check-ins de ejemplo: COMENTADO para evitar conflictos de timestamp con hora del sistema.
@@ -524,16 +538,17 @@ async function main() {
   }
   */
 
-  // 6. Resumen final
+  // 5. Resumen final
+  const totalVehiculosRef = empresasData.reduce((sum, e) => sum + e.derroteros.reduce((s, d) => s + d.autobuses + d.microbuses + d.combis, 0), 0);
   console.log('\n' + '='.repeat(50));
-  console.log('📊 RESUMEN DEL SEED');
+  console.log('📊 RESUMEN DEL SEED (idempotente, no borra datos)');
   console.log('='.repeat(50));
-  console.log(`   🏢 Empresas: ${empresasData.length + 1} (incl. ruta teórica Insurgentes)`);
+  console.log(`   🏢 Empresas: ${empresasData.length + 1} (incl. Insurgentes)`);
   console.log(`   🛣️  Derroteros: ${totalDerroteros + 1}`);
-  console.log(`   🚌 Vehículos (registrados en PDF): ${totalVehiculos}`);
-  console.log(`   👤 Usuarios creados: 8 (admin, empresa, checador, choferes Juan/Edgar/Pedro, pasajero)`);
+  console.log(`   🚌 Vehículos de muestra: ~${Math.min(5 * totalDerroteros, totalVehiculosRef)}`);
+  console.log(`   👤 Usuarios de sistema: 8 (admin, gerente, checador, 3 choferes, pasajero)`);
   console.log('='.repeat(50));
-  console.log('\n✅ Seed completado exitosamente!\n');
+  console.log('\n✅ Seed completado. Los usuarios reales y datos existentes no se modifican.\n');
 
   console.log('📝 Credenciales de prueba:');
   console.log('   Super Admin: admin@rutacheck.mx / admin123');
