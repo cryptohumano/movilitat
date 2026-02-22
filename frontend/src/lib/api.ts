@@ -5,7 +5,12 @@ const defaultApiUrl =
   typeof window !== 'undefined' && window.location.port === '3000'
     ? 'http://localhost:3001/api'
     : '/api';
-const API_URL = import.meta.env.VITE_API_URL || defaultApiUrl;
+const rawApiUrl = import.meta.env.VITE_API_URL || defaultApiUrl;
+// Asegurar URL absoluta: si Railway/env ponen solo el host (sin https://), el navegador lo interpreta como path relativo
+const API_URL =
+  rawApiUrl.startsWith('http://') || rawApiUrl.startsWith('https://')
+    ? rawApiUrl
+    : `https://${rawApiUrl.replace(/^\/+/, '')}`;
 
 interface ApiResponse<T> {
   success: boolean;
